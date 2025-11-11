@@ -1,0 +1,45 @@
+---
+title: "Untitled"
+author: "Lei Huang"
+date: "2025-11-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# 安装 Asaur 包（从 CRAN）
+# install.packages("asaur")
+
+# 加载
+library(asaur)
+
+# 查看数据集列表
+data(package = "asaur")
+
+data("hepatoCellular", package = "asaur")
+str(hepatoCellular)
+head(hepatoCellular)
+
+data("pharmacoSmoking", package = "asaur")
+str(pharmacoSmoking)
+head(pharmacoSmoking)
+
+```
+
+
+```{r}
+# 安装 GLDreg 包（若未安装）
+install.packages("GLDreg")
+# 加载包
+library(GLDreg)
+# 加载 actg 数据集
+data(actg)
+# 查看数据集前几行
+head(actg)
+```
+
+
+

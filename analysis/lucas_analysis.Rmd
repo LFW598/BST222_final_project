@@ -4,8 +4,8 @@ output: html_document
 ---
 
 ```{r loading packages}
-library(tidyverse, suppressPackageStartupMessages(TRUE))
-library(survival, suppressPackageStartupMessages(TRUE))
+library(tidyverse, suppressPackageStartupMessages(TRUE), suppressWarnings(TRUE))
+library(survival, suppressPackageStartupMessages(TRUE), suppressWarnings(TRUE))
 ```
 
 ```{r loading data}

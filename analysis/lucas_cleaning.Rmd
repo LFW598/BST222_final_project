@@ -21,12 +21,13 @@ edit_actg <-
     sex = factor(sex, levels = 0:1, labels = c('male', 'female')),
     race = factor(raceth, levels = 1:6, labels = c('wnh', 'bnh', 'h', 'api', 'ai', 'other')),
     ivdrug = factor(ivdrug, levels = 1:3, labels = c('Never', 'Currently', 'Previously')),
-    time_aids = time,
-    aids = censor,
+    event = censor,
+    time_event = time,
     death = censor_d,
+    time_death = time_d,
     base_cd4 = cd4
   ) |> 
-  select(-c(raceth, strat2, time, censor, censor_d, cd4))
+  select(-c(raceth, strat2, time, time_d, censor, censor_d, cd4))
 ```
 
 ```{r adding to data folder}

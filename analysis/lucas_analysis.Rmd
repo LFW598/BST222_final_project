@@ -1,0 +1,18 @@
+---
+title: "lucas_analysis"
+output: html_document
+---
+
+```{r loading packages}
+library(tidyverse, suppressPackageStartupMessages(TRUE))
+library(survival, suppressPackageStartupMessages(TRUE))
+```
+
+```{r loading data}
+actg_c <- readRDS('../data/actg_clean.rds')
+```
+
+```{r}
+
+```
+

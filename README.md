@@ -7,6 +7,8 @@ course content is tested on the Ph.D. preliminary exam.
 
 The authors of this project are Lucas Webster (first year Biostat Ph.D. student), Berna Paez (), Lei Huang (), and Yifan Yang (). We used the 
 ACTG320 dataset from the GLDreg package to analyze time-to-AIDS diagnosis data on HIV-1 infected patients taking Indinavir for treatment against
-those who took the standard treatments at the time.
+those who took the standard treatments at the time. Information about the dataset can be found at the link below.
 
 The slides in this repository were presented to the course on 12//25.
+
+https://hivdb.stanford.edu/pages/clinicalStudyData/ACTG320.html

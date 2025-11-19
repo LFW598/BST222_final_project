@@ -1,0 +1,12 @@
+---
+title: "lucas-analysis"
+output: html_document
+---
+
+```{r}
+library(GLDreg)
+```
+
+```{r}
+
+```

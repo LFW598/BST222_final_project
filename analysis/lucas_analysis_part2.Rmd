@@ -1,0 +1,34 @@
+---
+title: "lucas_analysis"
+output: html_document
+---
+
+```{r loading packages}
+suppressWarnings(suppressPackageStartupMessages(library(tidyverse)))
+suppressWarnings(suppressPackageStartupMessages(library(survival)))
+```
+
+```{r loading data}
+actg_c <- readRDS('../data/actg_clean.rds')
+```
+
+```{r KM Curves}
+surv_actg <- Surv(actg_c$time_event, actg_c$event)
+
+survfit_actg <- survfit(surv_actg ~ tx, data = actg_c)
+
+survfit_actg |> 
+  plot(main = "Disease Free Survival for Soc and Invidir",
+       col = 1:2, lwd = 2,
+       conf.int = TRUE,
+       xlab = 'Days',
+       ylab = 'Survival Prob.',
+       ylim = c(0.7, 1))
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+```
+
+```{r testing hypothesis}
+survdiff(surv_actg ~ tx, data = actg_c)
+```
+
+From the Mantzel Haeznel Test, we see there to be a difference in the two treatments.

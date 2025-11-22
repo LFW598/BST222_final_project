@@ -16,6 +16,7 @@ actg_c <- readRDS('../data/actg_clean.rds')
 surv_actg <- Surv(actg_c$time_event, actg_c$event)
 
 survfit_actg <- survfit(surv_actg ~ tx, data = actg_c)
+survfit_na_actg <- survfit(surv_actg ~ tx, data = actg_c, type = 'fleming-harrington')
 
 survfit_actg |> 
   plot(main = "Disease Free Survival for Soc and Invidir",
@@ -25,10 +26,26 @@ survfit_actg |>
        ylab = 'Survival Prob.',
        ylim = c(0.7, 1))
 legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+
+survfit_actg |> 
+  plot(main = 'KM vs. AE Curve',
+       col = 1:2, lwd = 2,
+       xlab = 'days',
+       ylab = 'Survival Prob',
+       ylim = c(0.7, 1))
+lines(survfit_na_actg, col = 3:4)
+legend('bottomleft', c('KM Soc', 'KM SoC + Invidir', 'AE SoC', 'AE SoC + Invidir'), col = c(1:4), lwd = 1)
 ```
+
+We see the AE and KM curves to be identical
 
 ```{r testing hypothesis}
 survdiff(surv_actg ~ tx, data = actg_c)
 ```
 
 From the Mantzel Haeznel Test, we see there to be a difference in the two treatments.
+
+```{r}
+
+```
+

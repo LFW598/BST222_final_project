@@ -1,0 +1,34 @@
+Section 1: Exploratory Data Analysis (EDA)
+- Describe the dataset and key variables.
+- Summarize baseline characteristics.
+- Visualize covariate distributions (histograms, boxplots).
+- Identify potential outliers or unusual observations.
+
+
+Section 2: Assumption Checking
+- Check the proportional hazards assumption using Schoenfeld residuals (cox.zph).
+- Identify any covariates that violate the PH assumption.
+- Examine deviance residuals to detect influential points.
+- Assess linearity assumptions for continuous covariates.
+- If necessary, consider transformations or stratification to address violations.
+
+
+Section 3: Main Survival Models
+- Kaplan–Meier survival curves: fit_km <- survfit(Surv(time, censor) ~ tx, data = actg) 
+	and log-rank tests: survdiff(Surv(time, censor) ~ tx, data = actg)
+- Cox proportional hazards model (only treatment): cox_uni <- coxph(Surv(time, censor) ~ tx, data = actg)
+	multivariable Cox model: cox_multi <- coxph(Surv(time, censor) ~ tx + age + cd4 + sexF + ..., data = actg)
+- Interaction models: cox_int <- coxph(Surv(time, censor) ~ tx*cd4 + age + sexF + raceth, data = actg)
+- If PH assumptions are violated, fit stratified Cox models.
+
+
+Section 4: Advanced Models (Optional)
+- Time-varying coefficient Cox models if covariates show time-dependent effects:
+	cox_tvc <- coxph(Surv(time, censor) ~ tx + tt(tx) + age + cd4,
+  			data = actg,
+  			tt = function(x, t, ...) x * log(t))
+- Accelerated Failure Time (AFT) models (Weibull, log-normal, log-logistic) and compare with the Cox model
+
+
+Section 5: Discussion
+- Summarize major findings regarding treatment effects and key covariates.

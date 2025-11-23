@@ -91,8 +91,66 @@ lines(survfit(large_cox_actg, large_model_df, data = actg_c),
 legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 ```
 
-We see that proportionality seems to hold in our cloglog plot. Looking at the observed vs. expected survival curves, we see that a small model fits the observed survival much better than our large model does, pointing in the direction that a small model will be better. Drop1 will likely not be very effective, as there will be a lot to change, ie combinations of dropping, so we will investiagte residuals to see which variables are causing problems and then remove them from the model, as well as which variables can be modified to keep our assumptions strong (linearity, etc.)
+We see that proportionality seems to hold in our cloglog plot. Looking at the observed vs. expected survival curves, we see that a small model fits the observed survival much better than our large model does, pointing in the direction that a small model will be better. Drop1 will likely not be very effective, as there will be a lot to change, ie combinations of dropping, so we will investigate residuals to see which variables are causing problems and then remove them from the model, as well as which variables can be modified to keep our assumptions strong (linearity, etc.)
 
-```{r residuals to tighten up model}
+```{r schoenfeld residuals for proportionality}
+large_model_zph <- 
+  cox.zph(large_cox_actg)
+
+large_model_zph
+
+plot(large_model_zph[1],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Treatment')
+
+plot(large_model_zph[2],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Sex')
+
+plot(large_model_zph[3],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Hemophilia')
+
+plot(large_model_zph[4],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'IV Drug Usage')
+
+plot(large_model_zph[5],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Karnofsky Score')
+
+plot(large_model_zph[6],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Prior ZDV Use (Months)')
+
+plot(large_model_zph[7],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Age')
+
+plot(large_model_zph[8],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Race')
+
+plot(large_model_zph[9],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Base CD4')
+```
+
+None of the variables bring up an apparent proportionality issue in the model graphically, although base_cd4 and age are questionable from their p-values.
+
+```{r martingale residuals for transformations}
+
+```
+
+```{r cox-snell residuals for goodness of fit}
 
 ```

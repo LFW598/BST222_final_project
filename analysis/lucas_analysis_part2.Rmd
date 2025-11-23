@@ -43,9 +43,33 @@ We see the AE and KM curves to be identical
 survdiff(surv_actg ~ tx, data = actg_c)
 ```
 
-From the Mantzel Haeznel Test, we see there to be a difference in the two treatments.
+From the Mantzel-Haeznel Test, we see there to be a difference in the two treatments. We should investigate this with cox model for proportional hazards.
 
-```{r}
-
+```{r small model}
+small_cox_actg <- coxph(surv_actg ~ tx, data = actg)
+summary(small_cox_actg)
 ```
 
+```{r large model}
+large_cox_actg <- coxph(surv_actg ~ tx + sex + hemophil + karnof + priorzdv + age + race + base_cd4, data = actg_c)
+summary(large_cox_actg)
+```
+
+Lets see if proportionality holds for this large model, and then investigate residuals if needed to tighten it up before we start dropping or 
+
+```{r checking proportionality}
+plot(survfit_na_actg,
+     col = 1:2, lwd = 2,
+     fun = 'cloglog',
+     main = 'Complimentary Log-Log Survival Curves')
+legend('topleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+
+plot(survfit_na_actg)
+# work on observed vs. expected survival curves to check proportionality of both small and large model
+```
+
+We see that proportionality blah blah blah, lines pretty parallel, time to investigate residuals to see if some can improve this assumption, and what other variable/dataset modifications can make our model stronger
+
+```{r residuals to tighten up model}
+
+```

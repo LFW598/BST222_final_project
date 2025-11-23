@@ -9,13 +9,13 @@ Section 2: Assumption Checking
 - Check the proportional hazards assumption using Schoenfeld residuals (cox.zph).
 - Identify any covariates that violate the PH assumption.
 - Examine deviance residuals to detect influential points.
-- Assess linearity assumptions for continuous covariates.
+- Assess linearity assumptions for continuous covariates using martingale residuals.
 - If necessary, consider transformations or stratification to address violations.
 
 
 Section 3: Main Survival Models
 - Kaplan–Meier survival curves: fit_km <- survfit(Surv(time, censor) ~ tx, data = actg) 
-	and log-rank tests: survdiff(Surv(time, censor) ~ tx, data = actg)
+	and log-rank tests: survdiff(Surv(time, censor) ~ tx, data = actg) (Lucas Done)
 - Cox proportional hazards model (only treatment): cox_uni <- coxph(Surv(time, censor) ~ tx, data = actg)
 	multivariable Cox model: cox_multi <- coxph(Surv(time, censor) ~ tx + age + cd4 + sexF + ..., data = actg)
 - Interaction models: cox_int <- coxph(Surv(time, censor) ~ tx*cd4 + age + sexF + raceth, data = actg)

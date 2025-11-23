@@ -30,7 +30,7 @@ legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 survfit_actg |> 
   plot(main = 'KM vs. AE Curve',
        col = 1:2, lwd = 2,
-       xlab = 'days',
+       xlab = 'Days',
        ylab = 'Survival Prob',
        ylim = c(0.7, 1))
 lines(survfit_na_actg, col = 3:4)
@@ -46,12 +46,12 @@ survdiff(surv_actg ~ tx, data = actg_c)
 From the Mantzel-Haeznel Test, we see there to be a difference in the two treatments. We should investigate this with cox model for proportional hazards.
 
 ```{r small model}
-small_cox_actg <- coxph(surv_actg ~ tx, data = actg)
+small_cox_actg <- coxph(surv_actg ~ tx, data = actg_c)
 summary(small_cox_actg)
 ```
 
 ```{r large model}
-large_cox_actg <- coxph(surv_actg ~ tx + sex + hemophil + karnof + priorzdv + age + race + base_cd4, data = actg_c)
+large_cox_actg <- coxph(surv_actg ~ tx + sex + hemophil + ivdrug + karnof + priorzdv + age + race + base_cd4, data = actg_c)
 summary(large_cox_actg)
 ```
 
@@ -64,11 +64,34 @@ plot(survfit_na_actg,
      main = 'Complimentary Log-Log Survival Curves')
 legend('topleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 
-plot(survfit_na_actg)
-# work on observed vs. expected survival curves to check proportionality of both small and large model
+plot(survfit_na_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Small Model)',
+     xlab = 'Days',
+     ylab = 'Survival Prob.')
+lines(survfit(small_cox_actg, data.frame(tx = c(0, 1)), data = actg_c),
+      col = 1:2, lwd = 2, lty = 2)
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+
+mode_stat <- function(v) names(which.max(table(v)))
+
+large_model_df <- data.frame(tx = c(0, 1),
+                             sex = c('male', 'male'),
+                             ivdrug = c('never', 'never'),
+                             hemophil = c(0, 0),
+                             karnof = c(mode_stat(actg_c$karnof[actg_c$tx == 0]), mode_stat(actg_c$karnof[actg_c$tx == 1])),
+                             priorzdv = c(mean(actg_c$priorzdv[actg_c$tx == 0]), mean(actg_c$priorzdv[actg_c$tx == 1])),
+                             age = c(mean(actg_c$age[actg_c$tx == 0]), mean(actg_c$age[actg_c$tx == 1])),
+                             race = c(mode_stat(actg_c$race[actg_c$tx == 0]), mode_stat(actg_c$race[actg_c$tx == 1])),
+                             base_cd4 = c(mean(actg_c$base_cd4[actg_c$tx == 0]), mean(actg_c$base_cd4[actg_c$tx == 1])))
+
+plot(survfit_na_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Large Model)',
+     xlab = 'Days',
+     ylab = 'Survival Prob.')
+lines(survfit(large_cox_actg, large_model_df, data = actg_c),
+      col = 1:2, lwd = 2, lty = 2)
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 ```
 
-We see that proportionality blah blah blah, lines pretty parallel, time to investigate residuals to see if some can improve this assumption, and what other variable/dataset modifications can make our model stronger
+We see that proportionality seems to hold in our cloglog plot. Looking at the observed vs. expected survival curves, we see that a small model fits the observed survival much better than our large model does, pointing in the direction that a small model will be better. Drop1 will likely not be very effective, as there will be a lot to change, ie combinations of dropping, so we will investiagte residuals to see which variables are causing problems and then remove them from the model, as well as which variables can be modified to keep our assumptions strong (linearity, etc.)
 
 ```{r residuals to tighten up model}
 

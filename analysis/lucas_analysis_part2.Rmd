@@ -6,6 +6,8 @@ output: html_document
 ```{r loading packages}
 suppressWarnings(suppressPackageStartupMessages(library(tidyverse)))
 suppressWarnings(suppressPackageStartupMessages(library(survival)))
+
+mode_stat <- function(v) names(which.max(table(v)))
 ```
 
 ```{r loading data}
@@ -71,17 +73,15 @@ lines(survfit(small_cox_actg, data.frame(tx = c(0, 1)), data = actg_c),
       col = 1:2, lwd = 2, lty = 2)
 legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 
-mode_stat <- function(v) names(which.max(table(v)))
-
 large_model_df <- data.frame(tx = c(0, 1),
                              sex = c('male', 'male'),
                              ivdrug = c('never', 'never'),
                              hemophil = c(0, 0),
                              karnof = c(mode_stat(actg_c$karnof[actg_c$tx == 0]), mode_stat(actg_c$karnof[actg_c$tx == 1])),
-                             priorzdv = c(mean(actg_c$priorzdv[actg_c$tx == 0]), mean(actg_c$priorzdv[actg_c$tx == 1])),
+                             priorzdv = c(median(actg_c$priorzdv[actg_c$tx == 0]), median(actg_c$priorzdv[actg_c$tx == 1])),
                              age = c(mean(actg_c$age[actg_c$tx == 0]), mean(actg_c$age[actg_c$tx == 1])),
                              race = c(mode_stat(actg_c$race[actg_c$tx == 0]), mode_stat(actg_c$race[actg_c$tx == 1])),
-                             base_cd4 = c(mean(actg_c$base_cd4[actg_c$tx == 0]), mean(actg_c$base_cd4[actg_c$tx == 1])))
+                             base_cd4 = c(median(actg_c$base_cd4[actg_c$tx == 0]), median(actg_c$base_cd4[actg_c$tx == 1])))
 
 plot(survfit_na_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Large Model)',
      xlab = 'Days',
@@ -186,20 +186,79 @@ It seems logical that age and karnofsky score would have an interaction. A 60 ye
 ```{r karnofsky score and age}
 summary(mid_cox_actg)
 summary(coxph(surv_actg ~ tx + ivdrug + priorzdv + base_cd4 + (age * karnof), data = actg_c))
+
+mres_mid <- residuals(mid_cox_actg, type = 'martingale')
+
+plot((actg_c$age * as.numeric(actg_c$karnof)), mres_mid,
+     xlab = 'Age * Karnofsky Score',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. Age * Karnofsky Score')
+lines(lowess((actg_c$age * as.numeric(actg_c$karnof)), mres_mid))
 ```
 
 That was a miss, its likely that the intuition is fine, but actually age and karnofsky score are highly correlated. Since this was a short study it's likely that overall health is more important that age. In the long run, age may cause complications with having a combined event of death and AIDS, but not here. Lets check covariance.
 
 ```{r cov of karnof and age and result}
-
+boxplot(age ~ karnof, data = actg_c,
+        main = 'Boxplots of Age by Karnofsky Score',
+        xlab = 'Karnofsky Score',
+        ylab = 'Age')
 ```
 
-asdf we see high cov so get rid of one or we don't so we keep both wihtout interaction
+Those with the lower score are slightly older, but not by much to assume that there is great co-linearity between them, we should be fine keeping both variables.
+
+Next, priorzdv may be a proxy for how long someone has had HIV, which could be an important measure in AIDS progression, but different to base_cd4. Lets see if they have high co-linearity.
+
+```{r}
+plot(actg_c$priorzdv, actg_c$base_cd4,
+     xlim = c(0, 200),
+     xlab = 'Prior ZDV',
+     ylab = 'Base cd4',
+     main = 'Plot of Base cd4 against Prior ZDV')
+```
+
+Again, there is no real pattern here between someone's baseline cd4 level and their prior months of ZDV usage, so there is no reason to believe they are having a strong effect on each other.
+
+We can try now to see if an interaction term here is helpful, its reasonable that the effect of someones prior zdv usage on their survival depends on their baseline cd4 as someone with a higher cd4 should have a better time with the disease, but longer zdv implies longer time with HIV, which has detrimental effects on health outside of just cd4.
+
+```{r}
+summary(mid_cox_actg)
+summary(coxph(surv_actg ~ tx + ivdrug + (priorzdv * base_cd4) + age + karnof, data = actg_c))
+
+plot((actg_c$priorzdv * actg_c$base_cd4), mres_mid,
+     xlab = 'ZDV * Base cd4',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. ZDV Usage * Base cd4')
+lines(lowess((actg_c$priorzdv * actg_c$base_cd4), mres_mid))
+```
+
+Again, no dice, an interaction term helps us not here.
 
 ```{r checking survival of mid model against tx model}
+mid_df <- data.frame(tx = c(0, 1),
+                     ivdrug = c('never', 'never'),
+                     karnof = c(mode_stat(actg_c$karnof[actg_c$tx == 0]), mode_stat(actg_c$karnof[actg_c$tx == 1])),
+                     priorzdv = c(median(actg_c$priorzdv[actg_c$tx == 0]), median(actg_c$priorzdev[actg_c$tx == 1])),
+                     age = c(mean(actg_c$age[actg_c$tx == 0]), mean(actg_c$age[actg_c$tx == 1])),
+                     base_cd4 = c(median(actg_c$base_cd4[actg_c$tx == 0]), median(actg_c$base_cd4[actg_c$tx == 1])))
 
+plot(survfit_na_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Mid Model)',
+     xlab = 'Days',
+     ylab = 'Survival Prob.')
+lines(survfit(mid_cox_actg, mid_df, data = actg_c),
+      col = 1:2, lwd = 2, lty = 2)
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+
+plot(survfit_na_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Large Model)',
+     xlab = 'Days',
+     ylab = 'Survival Prob.')
+lines(survfit(large_cox_actg, large_model_df, data = actg_c),
+      col = 1:2, lwd = 2, lty = 2)
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 ```
 
-Checking this mid-model against the tx only model in the survival graphs...
+Checking this mid-model against the larger model, we see that there is no discernible difference. We can't find any linearity issues in our variables, and there are no obvious combined effects to create to help with the model.
 
-Summary so far: MAYBE base_cd4 violates the proportional hazards assumption, as we saw from its schoenfeld residuals, but overall model fit is pretty good, and none of the continuous covariates need a transformation it seems.
+Summary so far: MAYBE base_cd4 violates the proportional hazards assumption, as we saw from its schoenfeld residuals, but overall model fit is pretty good, and none of the continuous covariates need a transformation it seems. Look at stratification because of the base_cd4, and look for outliars with dfbeta and deviance residuals.
+
+Also: May want to remove those few values of individuals who use iv drugs currently, they are comprimising their health in a dramatic way, and they add an unnecessary variable to the model

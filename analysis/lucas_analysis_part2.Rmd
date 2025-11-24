@@ -55,7 +55,7 @@ large_cox_actg <- coxph(surv_actg ~ tx + sex + hemophil + ivdrug + karnof + prio
 summary(large_cox_actg)
 ```
 
-Lets see if proportionality holds for this large model, and then investigate residuals if needed to tighten it up before we start dropping or 
+Lets see if proportionality holds for this large model, and then investigate residuals if needed to tighten it up before we start dropping variables, or adding to the large one. 
 
 ```{r checking proportionality}
 plot(survfit_na_actg,
@@ -91,66 +91,115 @@ lines(survfit(large_cox_actg, large_model_df, data = actg_c),
 legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 ```
 
-We see that proportionality seems to hold in our cloglog plot. Looking at the observed vs. expected survival curves, we see that a small model fits the observed survival much better than our large model does, pointing in the direction that a small model will be better. Drop1 will likely not be very effective, as there will be a lot to change, ie combinations of dropping, so we will investigate residuals to see which variables are causing problems and then remove them from the model, as well as which variables can be modified to keep our assumptions strong (linearity, etc.)
+We see that proportionality seems to hold in our cloglog plot. Looking at the observed vs. expected survival curves, we see that a small model fits the observed survival much better than our large model does, pointing in the direction that a small model will be better. Drop1 will likely not be very effective, as there will be a lot to change, ie combinations of dropping, so we will instead try add1, and wremove variables that seem obviously unhelpful, and then investigate residuals to see which variables are causing problems and then remove them from the model, as well as which variables can be modified to keep our assumptions strong (linearity, etc.).
+
+```{r add1}
+add1(small_cox_actg, scope = ~ tx + sex + hemophil + ivdrug + karnof + priorzdv + age + race + base_cd4, test = "Chisq")
+```
+
+We see that keeping the karnofsky score, base_cd4, and age are helpful to the model, ivdrug use and priorzdv are borderline, so we will keep those as well and see if there are any transformations we can work with. We also have clinical reasons to believe priorzdv may be helpful in prediction, as it's a crucial part in the standard of care
+
+```{r}
+mid_cox_actg <- coxph(surv_actg ~ tx + ivdrug + karnof + priorzdv + age + base_cd4, data = actg_c)
+summary(mid_cox_actg)
+```
 
 ```{r schoenfeld residuals for proportionality}
-large_model_zph <- 
-  cox.zph(large_cox_actg)
+mid_model_zph <- 
+  cox.zph(mid_cox_actg)
 
-large_model_zph
+mid_model_zph
 
-plot(large_model_zph[1],
+plot(mid_model_zph[1],
      main = 'Plot of Schoenfeld Residuals',
      xlab = 'Time',
      ylab = 'Treatment')
 
-plot(large_model_zph[2],
+plot(mid_model_zph[2],
      main = 'Plot of Schoenfeld Residuals',
      xlab = 'Time',
-     ylab = 'Sex')
+     ylab = 'IVDrug')
 
-plot(large_model_zph[3],
-     main = 'Plot of Schoenfeld Residuals',
-     xlab = 'Time',
-     ylab = 'Hemophilia')
-
-plot(large_model_zph[4],
-     main = 'Plot of Schoenfeld Residuals',
-     xlab = 'Time',
-     ylab = 'IV Drug Usage')
-
-plot(large_model_zph[5],
+plot(mid_model_zph[3],
      main = 'Plot of Schoenfeld Residuals',
      xlab = 'Time',
      ylab = 'Karnofsky Score')
 
-plot(large_model_zph[6],
+plot(mid_model_zph[4],
      main = 'Plot of Schoenfeld Residuals',
      xlab = 'Time',
      ylab = 'Prior ZDV Use (Months)')
 
-plot(large_model_zph[7],
+plot(mid_model_zph[5],
      main = 'Plot of Schoenfeld Residuals',
      xlab = 'Time',
      ylab = 'Age')
 
-plot(large_model_zph[8],
+plot(mid_model_zph[6],
      main = 'Plot of Schoenfeld Residuals',
      xlab = 'Time',
-     ylab = 'Race')
-
-plot(large_model_zph[9],
-     main = 'Plot of Schoenfeld Residuals',
-     xlab = 'Time',
-     ylab = 'Base CD4')
+     ylab = 'Base_cd4 (mm^3)')
 ```
 
-None of the variables bring up an apparent proportionality issue in the model graphically, although base_cd4 and age are questionable from their p-values.
+None of the variables bring up super apparent proportionality issues graphically, but based on p-values, base_cd4 is borderline.
 
 ```{r martingale residuals for transformations}
+mres_priorzdv <- residuals(coxph(surv_actg ~ tx + ivdrug + karnof + age + base_cd4, data = actg_c))
+mres_age <- residuals(coxph(surv_actg ~ tx + ivdrug + karnof + priorzdv + base_cd4, data = actg_c))
+mres_basecd4 <- residuals(coxph(surv_actg ~ tx + ivdrug + karnof + priorzdv + age, data = actg_c))
 
+plot(actg_c$priorzdv, mres_priorzdv,
+     xlab = 'Months of Prior ZDV',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. ZDV Usage')
+lines(lowess(actg_c$priorzdv, mres_priorzdv))
+
+plot(actg_c$age, mres_age,
+     xlab = 'Age',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. Age')
+lines(lowess(actg_c$age, mres_age))
+
+plot(actg_c$base_cd4, mres_basecd4,
+     xlab = 'Base cd4',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. Base cd4')
+lines(lowess(actg_c$base_cd4, mres_basecd4))
 ```
+
+No linear transformations necessary it looks like from the martingale residuals at least
 
 ```{r cox-snell residuals for goodness of fit}
+mart_actg <- residuals(mid_cox_actg, type = 'martingale')
+cs_actg <- actg_c$event - mart_actg
+
+surv_cs <- survfit(Surv(cs_actg, actg_c$event) ~ 1, type = 'fleming-harrington')
+plot(surv_cs, fun = 'cumhaz',
+     main = 'Cumulative Hazard of Cox-Snell Residuals')
+abline(0, 1, col = 'red')
+```
+
+We don't see a lack of fit from this procedure. There don't seem to be any obvious ways of changing the large model to get a consistently better fit. Lastly, lets investigate interaction terms between variables.
+
+It seems logical that age and karnofsky score would have an interaction. A 60 year olf with a score of 100 is likely less resiliant to disease than a 25 year old with a score of 100.
+
+```{r karnofsky score and age}
+summary(mid_cox_actg)
+summary(coxph(surv_actg ~ tx + ivdrug + priorzdv + base_cd4 + (age * karnof), data = actg_c))
+```
+
+That was a miss, its likely that the intuition is fine, but actually age and karnofsky score are highly correlated. Since this was a short study it's likely that overall health is more important that age. In the long run, age may cause complications with having a combined event of death and AIDS, but not here. Lets check covariance.
+
+```{r cov of karnof and age and result}
 
 ```
+
+asdf we see high cov so get rid of one or we don't so we keep both wihtout interaction
+
+```{r checking survival of mid model against tx model}
+
+```
+
+Checking this mid-model against the tx only model in the survival graphs...
+
+Summary so far: MAYBE base_cd4 violates the proportional hazards assumption, as we saw from its schoenfeld residuals, but overall model fit is pretty good, and none of the continuous covariates need a transformation it seems.

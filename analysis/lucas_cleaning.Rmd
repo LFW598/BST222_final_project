@@ -25,7 +25,8 @@ edit_actg <-
     time_event = time,
     death = censor_d,
     time_death = time_d,
-    base_cd4 = cd4
+    base_cd4 = cd4,
+    ivdrug_bin = ifelse(actg$ivdrug == 1, 0, 1)
   ) |> 
   select(-c(raceth, strat2, time, time_d, censor, censor_d, cd4))
 ```

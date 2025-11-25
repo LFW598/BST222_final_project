@@ -66,7 +66,7 @@ plot(survfit_na_actg,
      main = 'Complimentary Log-Log Survival Curves')
 legend('topleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 
-plot(survfit_na_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Small Model)',
+plot(survfit_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Small Model)',
      xlab = 'Days',
      ylab = 'Survival Prob.')
 lines(survfit(small_cox_actg, data.frame(tx = c(0, 1)), data = actg_c),
@@ -83,7 +83,7 @@ large_model_df <- data.frame(tx = c(0, 1),
                              race = c(mode_stat(actg_c$race[actg_c$tx == 0]), mode_stat(actg_c$race[actg_c$tx == 1])),
                              base_cd4 = c(median(actg_c$base_cd4[actg_c$tx == 0]), median(actg_c$base_cd4[actg_c$tx == 1])))
 
-plot(survfit_na_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Large Model)',
+plot(survfit_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Large Model)',
      xlab = 'Days',
      ylab = 'Survival Prob.')
 lines(survfit(large_cox_actg, large_model_df, data = actg_c),
@@ -99,8 +99,15 @@ add1(small_cox_actg, scope = ~ tx + sex + hemophil + ivdrug + karnof + priorzdv 
 
 We see that keeping the karnofsky score, base_cd4, and age are helpful to the model, ivdrug use and priorzdv are borderline, so we will keep those as well and see if there are any transformations we can work with. We also have clinical reasons to believe priorzdv may be helpful in prediction, as it's a crucial part in the standard of care
 
-```{r}
+```{r mid model summary}
 mid_cox_actg <- coxph(surv_actg ~ tx + ivdrug + karnof + priorzdv + age + base_cd4, data = actg_c)
+summary(mid_cox_actg)
+```
+
+```{r ivdrug edit}
+table(actg_c$ivdrug)
+
+mid_cox_actg <- coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + age + base_cd4, data = actg_c)
 summary(mid_cox_actg)
 ```
 
@@ -118,7 +125,7 @@ plot(mid_model_zph[1],
 plot(mid_model_zph[2],
      main = 'Plot of Schoenfeld Residuals',
      xlab = 'Time',
-     ylab = 'IVDrug')
+     ylab = 'IVDrug Binary')
 
 plot(mid_model_zph[3],
      main = 'Plot of Schoenfeld Residuals',
@@ -144,9 +151,9 @@ plot(mid_model_zph[6],
 None of the variables bring up super apparent proportionality issues graphically, but based on p-values, base_cd4 is borderline.
 
 ```{r martingale residuals for transformations}
-mres_priorzdv <- residuals(coxph(surv_actg ~ tx + ivdrug + karnof + age + base_cd4, data = actg_c))
-mres_age <- residuals(coxph(surv_actg ~ tx + ivdrug + karnof + priorzdv + base_cd4, data = actg_c))
-mres_basecd4 <- residuals(coxph(surv_actg ~ tx + ivdrug + karnof + priorzdv + age, data = actg_c))
+mres_priorzdv <- residuals(coxph(surv_actg ~ tx + ivdrug_bin + karnof + age + base_cd4, data = actg_c))
+mres_age <- residuals(coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + base_cd4, data = actg_c))
+mres_basecd4 <- residuals(coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + age, data = actg_c))
 
 plot(actg_c$priorzdv, mres_priorzdv,
      xlab = 'Months of Prior ZDV',
@@ -185,7 +192,7 @@ It seems logical that age and karnofsky score would have an interaction. A 60 ye
 
 ```{r karnofsky score and age}
 summary(mid_cox_actg)
-summary(coxph(surv_actg ~ tx + ivdrug + priorzdv + base_cd4 + (age * karnof), data = actg_c))
+summary(coxph(surv_actg ~ tx + ivdrug_bin + priorzdv + base_cd4 + (age * karnof), data = actg_c))
 
 mres_mid <- residuals(mid_cox_actg, type = 'martingale')
 
@@ -223,7 +230,7 @@ We can try now to see if an interaction term here is helpful, its reasonable tha
 
 ```{r}
 summary(mid_cox_actg)
-summary(coxph(surv_actg ~ tx + ivdrug + (priorzdv * base_cd4) + age + karnof, data = actg_c))
+summary(coxph(surv_actg ~ tx + ivdrug_bin + (priorzdv * base_cd4) + age + karnof, data = actg_c))
 
 plot((actg_c$priorzdv * actg_c$base_cd4), mres_mid,
      xlab = 'ZDV * Base cd4',
@@ -236,20 +243,20 @@ Again, no dice, an interaction term helps us not here.
 
 ```{r checking survival of mid model against tx model}
 mid_df <- data.frame(tx = c(0, 1),
-                     ivdrug = c('never', 'never'),
+                     ivdrug_bin = c(0, 0),
                      karnof = c(mode_stat(actg_c$karnof[actg_c$tx == 0]), mode_stat(actg_c$karnof[actg_c$tx == 1])),
                      priorzdv = c(median(actg_c$priorzdv[actg_c$tx == 0]), median(actg_c$priorzdev[actg_c$tx == 1])),
                      age = c(mean(actg_c$age[actg_c$tx == 0]), mean(actg_c$age[actg_c$tx == 1])),
                      base_cd4 = c(median(actg_c$base_cd4[actg_c$tx == 0]), median(actg_c$base_cd4[actg_c$tx == 1])))
 
-plot(survfit_na_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Mid Model)',
+plot(survfit_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Mid Model)',
      xlab = 'Days',
      ylab = 'Survival Prob.')
 lines(survfit(mid_cox_actg, mid_df, data = actg_c),
       col = 1:2, lwd = 2, lty = 2)
 legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 
-plot(survfit_na_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Large Model)',
+plot(survfit_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Large Model)',
      xlab = 'Days',
      ylab = 'Survival Prob.')
 lines(survfit(large_cox_actg, large_model_df, data = actg_c),
@@ -259,6 +266,16 @@ legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 
 Checking this mid-model against the larger model, we see that there is no discernible difference. We can't find any linearity issues in our variables, and there are no obvious combined effects to create to help with the model.
 
-Summary so far: MAYBE base_cd4 violates the proportional hazards assumption, as we saw from its schoenfeld residuals, but overall model fit is pretty good, and none of the continuous covariates need a transformation it seems. Look at stratification because of the base_cd4, and look for outliars with dfbeta and deviance residuals.
+##############################################################################################################################
 
-Also: May want to remove those few values of individuals who use iv drugs currently, they are comprimising their health in a dramatic way, and they add an unnecessary variable to the model
+Summary so far: 
+
+USE THE MID MODEL, I ALSO CREATED AN IVDRUG_BINARY VARIABLE AND MADE THIS THE MID MODEL
+
+MAYBE base_cd4 violates the proportional hazards assumption, as we saw from its schoenfeld residuals, but overall model fit is pretty good, and none of the continuous covariates need a transformation it seems.
+
+Look at stratification because of the base_cd4
+
+Look for outliars with dfbeta and deviance residuals.
+
+Look at removing priorzdv, I thought it would be clinically important but it seems like it may be really hurting the model.

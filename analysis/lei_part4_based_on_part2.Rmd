@@ -1,0 +1,417 @@
+---
+title: "lucas_analysis"
+output: html_document
+---
+
+```{r loading packages}
+suppressWarnings(suppressPackageStartupMessages(library(tidyverse)))
+suppressWarnings(suppressPackageStartupMessages(library(survival)))
+
+mode_stat <- function(v) names(which.max(table(v)))
+```
+
+```{r loading data}
+setwd("D:/Desktop/UC Davis/2025Fall/BST222/Final Project/Lucas")
+actg_c <- readRDS('data/actg_clean.rds')
+```
+
+```{r KM Curves}
+surv_actg <- Surv(actg_c$time_event, actg_c$event)
+
+survfit_actg <- survfit(surv_actg ~ tx, data = actg_c)
+survfit_na_actg <- survfit(surv_actg ~ tx, data = actg_c, type = 'fleming-harrington')
+
+survfit_actg |> 
+  plot(main = "Disease Free Survival for Soc and Invidir",
+       col = 1:2, lwd = 2,
+       conf.int = TRUE,
+       xlab = 'Days',
+       ylab = 'Survival Prob.',
+       ylim = c(0.7, 1))
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+
+survfit_actg |> 
+  plot(main = 'KM vs. AE Curve',
+       col = 1:2, lwd = 2,
+       xlab = 'Days',
+       ylab = 'Survival Prob',
+       ylim = c(0.7, 1))
+lines(survfit_na_actg, col = 3:4)
+legend('bottomleft', c('KM Soc', 'KM SoC + Invidir', 'AE SoC', 'AE SoC + Invidir'), col = c(1:4), lwd = 1)
+```
+
+We see the AE and KM curves to be identical
+
+```{r testing hypothesis}
+survdiff(surv_actg ~ tx, data = actg_c)
+```
+
+From the Mantzel-Haeznel Test, we see there to be a difference in the two treatments. We should investigate this with cox model for proportional hazards.
+
+```{r small model}
+small_cox_actg <- coxph(surv_actg ~ tx, data = actg_c)
+summary(small_cox_actg)
+```
+
+```{r large model}
+large_cox_actg <- coxph(surv_actg ~ tx + sex + hemophil + ivdrug + karnof + priorzdv + age + race + base_cd4, data = actg_c)
+summary(large_cox_actg)
+```
+
+Lets see if proportionality holds for this large model, and then investigate residuals if needed to tighten it up before we start dropping variables, or adding to the large one. 
+
+```{r checking proportionality}
+plot(survfit_na_actg,
+     col = 1:2, lwd = 2,
+     fun = 'cloglog',
+     main = 'Complimentary Log-Log Survival Curves')
+legend('topleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+
+plot(survfit_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Small Model)',
+     xlab = 'Days',
+     ylab = 'Survival Prob.')
+lines(survfit(small_cox_actg, data.frame(tx = c(0, 1)), data = actg_c),
+      col = 1:2, lwd = 2, lty = 2)
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+
+large_model_df <- data.frame(tx = c(0, 1),
+                             sex = c('male', 'male'),
+                             ivdrug = c('never', 'never'),
+                             hemophil = c(0, 0),
+                             karnof = c(mode_stat(actg_c$karnof[actg_c$tx == 0]), mode_stat(actg_c$karnof[actg_c$tx == 1])),
+                             priorzdv = c(median(actg_c$priorzdv[actg_c$tx == 0]), median(actg_c$priorzdv[actg_c$tx == 1])),
+                             age = c(mean(actg_c$age[actg_c$tx == 0]), mean(actg_c$age[actg_c$tx == 1])),
+                             race = c(mode_stat(actg_c$race[actg_c$tx == 0]), mode_stat(actg_c$race[actg_c$tx == 1])),
+                             base_cd4 = c(median(actg_c$base_cd4[actg_c$tx == 0]), median(actg_c$base_cd4[actg_c$tx == 1])))
+
+plot(survfit_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Large Model)',
+     xlab = 'Days',
+     ylab = 'Survival Prob.')
+lines(survfit(large_cox_actg, large_model_df, data = actg_c),
+      col = 1:2, lwd = 2, lty = 2)
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+```
+
+We see that proportionality seems to hold in our cloglog plot. Looking at the observed vs. expected survival curves, we see that a small model fits the observed survival much better than our large model does, pointing in the direction that a small model will be better. Drop1 will likely not be very effective, as there will be a lot to change, ie combinations of dropping, so we will instead try add1, and wremove variables that seem obviously unhelpful, and then investigate residuals to see which variables are causing problems and then remove them from the model, as well as which variables can be modified to keep our assumptions strong (linearity, etc.).
+
+```{r add1}
+add1(small_cox_actg, scope = ~ tx + sex + hemophil + ivdrug + karnof + priorzdv + age + race + base_cd4, test = "Chisq")
+```
+
+We see that keeping the karnofsky score, base_cd4, and age are helpful to the model, ivdrug use and priorzdv are borderline, so we will keep those as well and see if there are any transformations we can work with. We also have clinical reasons to believe priorzdv may be helpful in prediction, as it's a crucial part in the standard of care
+
+```{r mid model summary}
+mid_cox_actg <- coxph(surv_actg ~ tx + ivdrug + karnof + priorzdv + age + base_cd4, data = actg_c)
+summary(mid_cox_actg)
+```
+
+```{r ivdrug edit}
+table(actg_c$ivdrug)
+
+mid_cox_actg <- coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + age + base_cd4, data = actg_c)
+summary(mid_cox_actg)
+```
+
+```{r schoenfeld residuals for proportionality}
+mid_model_zph <- 
+  cox.zph(mid_cox_actg)
+
+mid_model_zph
+
+plot(mid_model_zph[1],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Treatment')
+
+plot(mid_model_zph[2],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'IVDrug Binary')
+
+plot(mid_model_zph[3],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Karnofsky Score')
+
+plot(mid_model_zph[4],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Prior ZDV Use (Months)')
+
+plot(mid_model_zph[5],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Age')
+
+plot(mid_model_zph[6],
+     main = 'Plot of Schoenfeld Residuals',
+     xlab = 'Time',
+     ylab = 'Base_cd4 (mm^3)')
+```
+
+None of the variables bring up super apparent proportionality issues graphically, but based on p-values, base_cd4 is borderline.
+
+```{r martingale residuals for transformations}
+mres_priorzdv <- residuals(coxph(surv_actg ~ tx + ivdrug_bin + karnof + age + base_cd4, data = actg_c))
+mres_age <- residuals(coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + base_cd4, data = actg_c))
+mres_basecd4 <- residuals(coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + age, data = actg_c))
+
+plot(actg_c$priorzdv, mres_priorzdv,
+     xlab = 'Months of Prior ZDV',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. ZDV Usage')
+lines(lowess(actg_c$priorzdv, mres_priorzdv))
+
+plot(actg_c$age, mres_age,
+     xlab = 'Age',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. Age')
+lines(lowess(actg_c$age, mres_age))
+
+plot(actg_c$base_cd4, mres_basecd4,
+     xlab = 'Base cd4',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. Base cd4')
+lines(lowess(actg_c$base_cd4, mres_basecd4))
+```
+
+No linear transformations necessary it looks like from the martingale residuals at least
+
+```{r cox-snell residuals for goodness of fit}
+mart_actg <- residuals(mid_cox_actg, type = 'martingale')
+cs_actg <- actg_c$event - mart_actg
+
+surv_cs <- survfit(Surv(cs_actg, actg_c$event) ~ 1, type = 'fleming-harrington')
+plot(surv_cs, fun = 'cumhaz',
+     main = 'Cumulative Hazard of Cox-Snell Residuals')
+abline(0, 1, col = 'red')
+```
+
+We don't see a lack of fit from this procedure. There don't seem to be any obvious ways of changing the large model to get a consistently better fit. Lastly, lets investigate interaction terms between variables.
+
+It seems logical that age and karnofsky score would have an interaction. A 60 year olf with a score of 100 is likely less resiliant to disease than a 25 year old with a score of 100.
+
+```{r karnofsky score and age}
+summary(mid_cox_actg)
+summary(coxph(surv_actg ~ tx + ivdrug_bin + priorzdv + base_cd4 + (age * karnof), data = actg_c))
+
+mres_mid <- residuals(mid_cox_actg, type = 'martingale')
+
+plot((actg_c$age * as.numeric(actg_c$karnof)), mres_mid,
+     xlab = 'Age * Karnofsky Score',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. Age * Karnofsky Score')
+lines(lowess((actg_c$age * as.numeric(actg_c$karnof)), mres_mid))
+```
+
+That was a miss, its likely that the intuition is fine, but actually age and karnofsky score are highly correlated. Since this was a short study it's likely that overall health is more important that age. In the long run, age may cause complications with having a combined event of death and AIDS, but not here. Lets check covariance.
+
+```{r cov of karnof and age and result}
+boxplot(age ~ karnof, data = actg_c,
+        main = 'Boxplots of Age by Karnofsky Score',
+        xlab = 'Karnofsky Score',
+        ylab = 'Age')
+```
+
+Those with the lower score are slightly older, but not by much to assume that there is great co-linearity between them, we should be fine keeping both variables.
+
+Next, priorzdv may be a proxy for how long someone has had HIV, which could be an important measure in AIDS progression, but different to base_cd4. Lets see if they have high co-linearity.
+
+```{r}
+plot(actg_c$priorzdv, actg_c$base_cd4,
+     xlim = c(0, 200),
+     xlab = 'Prior ZDV',
+     ylab = 'Base cd4',
+     main = 'Plot of Base cd4 against Prior ZDV')
+```
+
+Again, there is no real pattern here between someone's baseline cd4 level and their prior months of ZDV usage, so there is no reason to believe they are having a strong effect on each other.
+
+We can try now to see if an interaction term here is helpful, its reasonable that the effect of someones prior zdv usage on their survival depends on their baseline cd4 as someone with a higher cd4 should have a better time with the disease, but longer zdv implies longer time with HIV, which has detrimental effects on health outside of just cd4.
+
+```{r}
+summary(mid_cox_actg)
+summary(coxph(surv_actg ~ tx + ivdrug_bin + (priorzdv * base_cd4) + age + karnof, data = actg_c))
+
+plot((actg_c$priorzdv * actg_c$base_cd4), mres_mid,
+     xlab = 'ZDV * Base cd4',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. ZDV Usage * Base cd4')
+lines(lowess((actg_c$priorzdv * actg_c$base_cd4), mres_mid))
+```
+
+Again, no dice, an interaction term helps us not here.
+
+```{r checking survival of mid model against tx model}
+mid_df <- data.frame(tx = c(0, 1),
+                     ivdrug_bin = c(0, 0),
+                     karnof = c(mode_stat(actg_c$karnof[actg_c$tx == 0]), mode_stat(actg_c$karnof[actg_c$tx == 1])),
+                     priorzdv = c(median(actg_c$priorzdv[actg_c$tx == 0]), median(actg_c$priorzdev[actg_c$tx == 1])),
+                     age = c(mean(actg_c$age[actg_c$tx == 0]), mean(actg_c$age[actg_c$tx == 1])),
+                     base_cd4 = c(median(actg_c$base_cd4[actg_c$tx == 0]), median(actg_c$base_cd4[actg_c$tx == 1])))
+
+plot(survfit_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Mid Model)',
+     xlab = 'Days',
+     ylab = 'Survival Prob.')
+lines(survfit(mid_cox_actg, mid_df, data = actg_c),
+      col = 1:2, lwd = 2, lty = 2)
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+
+plot(survfit_actg, col = 1:2, lwd = 2, ylim = c(0.7, 1), main = 'Observed vs. Expected Survival (Large Model)',
+     xlab = 'Days',
+     ylab = 'Survival Prob.')
+lines(survfit(large_cox_actg, large_model_df, data = actg_c),
+      col = 1:2, lwd = 2, lty = 2)
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+```
+
+Checking this mid-model against the larger model, we see that there is no discernible difference. We can't find any linearity issues in our variables, and there are no obvious combined effects to create to help with the model.
+
+##############################################################################################################################
+
+Summary so far: 
+
+USE THE MID MODEL, I ALSO CREATED AN IVDRUG_BINARY VARIABLE AND MADE THIS THE MID MODEL
+
+MAYBE base_cd4 violates the proportional hazards assumption, as we saw from its schoenfeld residuals, but overall model fit is pretty good, and none of the continuous covariates need a transformation it seems.
+
+Look at stratification because of the base_cd4
+
+Look for outliars with dfbeta and deviance residuals.
+
+Look at removing priorzdv, I thought it would be clinically important but it seems like it may be really hurting the model.
+
+
+----------------------------
+# Section 4: Advanced Models
+
+=============================================================================================
+Part A: Time-Varying Coefficient Cox Model (TVC)
+=============================================================================================
+
+```{r}
+# Section 4 — Part A: Time-Varying Coefficient Cox Model (TVC)
+# tt = x*log(t) (commonly used)
+
+cox_tvc <- coxph(
+  Surv(time_event, event) ~ tx + ivdrug_bin + karnof + age + base_cd4 + tt(base_cd4),
+  data = actg_c,
+  tt = function(x, t, ...) x * log(t)
+)
+summary(cox_tvc)
+```
+
+
+
+```{r}
+# Section 4 — Part A: Time-Varying Coefficient Cox Model (TVC)
+# tt = x*t
+
+cox_tvc_1 <- coxph(
+  Surv(time_event, event) ~ tx + ivdrug_bin + karnof + age + base_cd4 + tt(base_cd4),
+  data = actg_c,
+  tt = function(x, t, ...) x * t
+)
+summary(cox_tvc_1)
+```
+
+The results shows that the p-value of tt = xlog(t) is 0.1437, greater than 0.1, seems not significant enough. Thus we turned to use tt = xt and get a p-value of 0.724, much better than before. Eventually we use the tt term of the form x*t.
+
+
+```{r}
+# Time-varying HR plot for base_cd4 under model cox_tvc_1
+# HR(t) = exp( base_cd4 × (b0 + b1 * t) )
+
+
+coefs <- coef(cox_tvc_1)
+V <- vcov(cox_tvc_1)
+
+b0 <- coefs["base_cd4"]
+b1 <- coefs["tt(base_cd4)"]
+
+var_b0 <- V["base_cd4","base_cd4"]
+var_b1 <- V["tt(base_cd4)","tt(base_cd4)"]
+cov_b0b1 <- V["base_cd4","tt(base_cd4)"]
+
+times <- seq(1, max(actg_c$time_event, na.rm = TRUE), length.out = 200)
+
+logHR_t <- b0 + b1 * times
+se_logHR <- sqrt(var_b0 + (times^2) * var_b1 + 2 * times * cov_b0b1)
+
+df_hr <- data.frame(
+  time = times,
+  HR = exp(logHR_t),
+  HR_lo = exp(logHR_t - 1.96 * se_logHR),
+  HR_hi = exp(logHR_t + 1.96 * se_logHR)
+)
+
+library(ggplot2)
+ggplot(df_hr, aes(x = time, y = HR)) +
+  geom_line(size = 1) +
+  geom_ribbon(aes(ymin = HR_lo, ymax = HR_hi), alpha = 0.2) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(x = "Time (days)", y = "HR per 1 unit base_cd4 increment",
+       title = "Time-varying Hazard Ratio for base_cd4 under TVC model")+
+  theme_minimal()
+
+
+# Interpretation of the TVC plot:
+# If HR(t) > 1 and increases → higher CD4 increases risk and the harmful effect becomes stronger over time.
+# If HR(t) < 1 and decreases → higher CD4 decreases risk and the protective effect becomes stronger over time.
+# If HR(t) crosses 1 → CD4 is protective at early times but becomes harmful later (or the opposite).
+
+# Our result:
+# HR(t) < 1 → higher baseline CD4 is consistently associated with lower risk (protective effect).
+# HR(t) increases over time → the protective effect weakens over time, but CD4 remains protective throughout follow-up.
+```
+
+
+
+The time-varying Cox model suggests that the effect of baseline CD4 count changes over time (p = 0.724 for tt(base_cd4)). This indicates a violation of the PH assumption for base_cd4, which was also borderline from the Schoenfeld residual test. Therefore, a model accommodating time-varying effects may better characterize disease progression risk.
+
+The HR(t) curve showed that the effect of base_cd4 tends to decrease the hazard ratio (HR(t) <1). While the effect declines as time passes (the HR converges to 1).
+
+This suggests that higher baseline CD4 counts are protective against disease progression, but this protective effect diminishes over time. Clinically, this could imply that while a strong immune status at baseline is beneficial, its relative advantage lessens as other factors come into play during disease progression.
+
+=============================================================================================
+Part B: AFT (accelerated Failure Time) Models
+=============================================================================================
+
+1. Fit commonly used AFT models (Weibull / log-normal / log-logistic)
+
+```{r}
+# load
+library(survival)
+
+# fit AFT models
+aft_weib <- survreg(Surv(time_event, event) ~ tx + ivdrug_bin + karnof + age + base_cd4,
+                    dist = "weibull", data = actg_c)
+
+aft_lognorm <- survreg(Surv(time_event, event) ~ tx + ivdrug_bin + karnof + age + base_cd4,
+                       dist = "lognormal", data = actg_c)
+
+aft_loglog <- survreg(Surv(time_event, event) ~ tx + ivdrug_bin + karnof + age + base_cd4,
+                      dist = "loglogistic", data = actg_c)
+
+```
+
+2. Model comparison using AIC
+
+```{r}
+AIC(aft_weib, aft_lognorm, aft_loglog)
+```
+
+The AICs for the three AFT models suggest that aft_loglog is the best model.
+
+
+```{r}
+summary(aft_loglog)
+```
+
+According to the AFT model summaries, we can interpret the coefficients in terms of time ratios (TR). In all the three models, the treatment and the history of IV drug use is significant with a positive effect in the mean survival time, and the base_cd4 has a significant slight positive effect, while the age has a negative effect implying that older patients tend to have less survival time, which is reasonable. Moreover, from the results on the Karnofsky Score, we find out that a higher K-score suggests a longer survival time.
+
+
+
+
+
+

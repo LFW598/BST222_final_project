@@ -1,0 +1,1071 @@
+---
+title: "Exploratory Data Analysis"
+author: "Bernabe Cano Paez"
+date: "2025-11-24"
+output: pdf_document
+---
+
+# Description of the dataset
+
+The `actg` dataset can be found in the `GLDreg` package and comes from Hosmer et al. (2008). This data frame has 1151 rows and 16 columns. 
+
+```{r}
+data <- readRDS("actg_clean.rds")
+
+dim(data)
+#str(data)
+#skimr::skim(data)
+```
+
+```{r,echo=FALSE}
+data$sex     <- factor(data$sex)
+data$tx      <- factor(data$tx)
+data$txgrp   <- factor(data$txgrp)
+data$cd4_lvl <- factor(data$cd4_lvl)
+data$race  <- factor(data$race)
+data$ivdrug  <- factor(data$ivdrug)
+```
+
+
+```{r, message=FALSE, echo=FALSE}
+#head(data)
+
+descriptions <- list(
+  id       = "Patient identifier",
+  tx       = "Treatment indicator (1 = IDV included, 0 = otherwise)",
+  txgrp    = "Treatment group (zdv, idv_zdv, idv_d4t, d4t)",
+  sex      = "Sex (male, female)",
+  ivdrug   = "IV drug use history (never, currently, previously)",
+  hemophil = "Hemophilia indicator (1 = yes, 0 = no)",
+  karnof   = "Karnofsky score functional status 
+            (100 = Normal; no complaint no evidence of disease. 
+              90 = Normal activity possible; minor signs/symptoms of disease. 
+              80 = Normal activity with effort; some signs/symptoms of disease.
+              70 = Cares for self; normal activity/active work not possible.)",
+  priorzdv = "Months of prior ZDV use",
+  age      = "Age at enrollment (years)",
+  cd4_lvl  = "CD4 stratum at screening (0 <= 50, 1 >50)",
+  race     = "Race/Ethnicity 
+          (wnh = White Non-Hispanic. 
+           bnh = Black Non-Hispanic. 
+           h   = Hispanic. 
+           api = Asian, Pacific Islander. 
+           ai  = American Indian, Alaskan Native.).",
+  event    = "Event indicator (1 = AIDS/death, 0 = censored)",
+  time_event = "Days to AIDS diagnosis or death",
+  death    = "Death indicator (1 = death, 0 = otherwise)",
+  time_death = "Days to death",
+  base_cd4      = "Baseline CD4 cell count (Cells/Milliliter)"
+)
+
+for (v in names(descriptions)) {
+  cat(sprintf("%-10s: %s\n", v, descriptions[[v]]))
+}
+```
+
+## Descriptive Statistics
+
+$\quad$ **The average and median event times are not very informative** for most treatment groups.
+In particular, in the d4t and idv_d4t groups essentially no one has experienced the event, so the reported “mean” and “median” simply reflect small censored times and do not describe the event time.
+
+```{r, message=FALSE, echo=FALSE}
+library(dplyr)
+
+summary_table <- data %>%
+  group_by(txgrp) %>%
+  summarise(
+    n = n(),
+    events = sum(event),
+    censored = sum(1 - event),
+    prop_censored = censored / n,
+    #total_time = sum(time_event),
+    mean_time = mean(time_event),
+    median_time = median(time_event),
+    #hazard = events / (n * mean_time)
+  )
+
+names(summary_table) <- c(
+  "Treatment Group",
+  "Number of Patients",
+  "Number of Events",
+  "Number of Censored Observations",
+  "Proportion Censored",
+  "Simple mean Time to Event",
+  "Median Time to Event"
+)
+
+knitr::kable(summary_table, digits = 4)
+```
+
+$\quad$ When aggregating treatment groups using only the binary variable tx (IDV included: yes/no), we observe slightly longer mean and median event times in the IDV group. However, this comparison is confounded by the fact that tx = 1 combines two regimens with very different censoring patterns (idv_zdv and idv_d4t). Because some of these regimens have almost no events, the aggregated descriptive statistics do not accurately reflect the underlying treatment effects. Therefore, the tx-based summary is less informative than the txgrp-based summary.
+
+$\quad$ Consistent with Lecture 4, the mean and median event time are **not informative** for heavily censored groups.
+
+```{r, message=FALSE, echo=FALSE}
+library(dplyr)
+
+summary_table <- data %>%
+  group_by(tx) %>%
+  summarise(
+    n = n(),
+    events = sum(event),
+    censored = sum(1 - event),
+    prop_censored = censored / n,
+    #total_time = sum(time_event),
+    mean_time = mean(time_event),
+    median_time = median(time_event),
+    #hazard = events / (n * mean_time)
+  )
+
+names(summary_table) <- c(
+  "Treatment Group (Idv included: yes/no)",
+  "Number of Patients",
+  "Number of Events",
+  "Number of Censored Observations",
+  "Proportion Censored",
+  "Simple mean Time to Event",
+  "Median Time to Event"
+)
+
+knitr::kable(summary_table, digits = 4)
+```
+
+$\quad$ Basic counts for the categorical variables indicate that the sample is highly unbalanced across several characteristics. Most participants are male (951 vs. 200 females), the majority report no history of intravenous drug use (968 never vs. 179 previously vs. 4 currently), and roughly two-thirds of the patients fall into the higher CD4 stratum (>50). These imbalances suggest that covariate effects may play a role in the progression to AIDS or death and will need to be accounted for in later modeling.  
+
+$\quad$ Regarding treatment, the dataset provides two different codings: a four-level treatment group (txgrp) and a binary indicator for IDV inclusion (tx). The descriptive results highlight important differences between these two codings.
+
+```{r, include=FALSE}
+data %>% count(sex)  %>% knitr::kable(digits = 4)
+data %>% count(race) %>% knitr::kable(digits = 4)
+data %>% count(cd4_lvl) %>% knitr::kable(digits = 4)
+data %>% count(ivdrug) %>% knitr::kable(digits = 4)
+```
+
+
+```{r, message=FALSE, echo=FALSE, out.width="90%"}
+hist(data$time_event, main="Time2Event distribution (days)",
+     xlab="Days", col="lightblue", border="white")
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%"}
+event_times <- data$time_event[data$event == 1]
+hist(event_times,
+     main = "Distribution of event times (only uncensored events)",
+     xlab = "Days",
+     col = "lightblue", border = "white")
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%"}
+censored_times <- data$time_event[data$event == 0]
+hist(censored_times,
+     main = "Distribution of censoring times",
+     xlab = "Days",
+     col = "lightgreen", border = "white")
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%"}
+library(dplyr)
+
+events_by_group <- data %>% filter(event == 1)
+
+hist(events_by_group$time_event,
+     main="Event times across all treatment groups",
+     xlab="Days", col="lightblue")
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%"}
+par(mfrow=c(1,2))
+hist(data$time_event[data$txgrp=="zdv" & data$event==1])
+hist(data$time_event[data$txgrp=="idv_zdv" & data$event==1])
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+library(ggplot2)
+
+events <- subset(data, event == 1)
+
+ggplot(events, aes(x = time_event, colour = factor(tx))) +
+  geom_density(size = 1.2, adjust = 1) +
+  scale_colour_manual(values=c("blue", "red"),
+                      labels=c("No IDV", "IDV"),
+                      name = "Treatment") +
+  labs(title = "Event time density (IDV yes/no)",
+       x = "Days", y = "Density") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "top"
+  )
+```
+
+```{r}
+d0 <- density(data$time_event[data$tx == 0 & data$event == 1], from = 0)
+d1 <- density(data$time_event[data$tx == 1 & data$event == 1], from = 0)
+
+plot(d0, col="blue", lwd=2,
+     main="Event time density (IDV yes/no)",
+     xlab="Days", ylim=c(0, max(d0$y, d1$y)))
+lines(d1, col="red", lwd=2)
+legend("topright", legend=c("No IDV","IDV"), col=c("blue","red"), lwd=2)
+```
+
+```{r}
+ggplot(data %>% filter(event == 1),
+       aes(x = time_event, color = sex)) +
+  geom_density(size = 1.2) +
+  labs(
+    title = "Event time density by sex",
+    x = "Days",
+    y = "Density",
+    color = "Sex"
+  ) +
+  theme_minimal(base_size = 14)
+```
+
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+library(ggplot2)
+
+events <- subset(data, event == 1)
+
+ggplot(events, aes(x = time_event, colour = sex)) +
+  geom_density(size = 1) +
+  facet_wrap(~ tx, nrow = 1,
+             labeller = labeller(tx = c(`0` = "No IDV", `1` = "IDV"))) +
+  labs(title = "Event time density by sex and IDV",
+       x = "Days", y = "Density") +
+  theme_bw() +
+  theme(legend.title = element_blank())
+```
+
+## Correlations
+
+- **time_event** and **time_death** are positively correlated, reflecting the structural relationship: death is one type of event and shares follow-up time structure.  
+- **priorzdv** shows weak correlation with **base_cd4** and age, suggesting that ZDV exposure is not systematically linked to these baseline measures.  
+- Correlations among numeric variables are relatively modest, with no evidence of perfect linear associations. 
+- Baseline CD4 levels exhibit moderate correlation with time-to-death variable ($\approx -0.11$) and no correlation with time-to-event($\approx 0.004$), consistent with clinical expectations.
+
+```{r, message=FALSE, echo=FALSE}
+numeric_vars = c("priorzdv", "age", "time_event", "time_death", "base_cd4")
+cor_matrix <- cor(data[, numeric_vars], use = "pairwise.complete.obs")
+#round(cor_matrix,2)
+
+#install.packages("gplots")
+library(gplots)
+
+heatmap.2(cor_matrix,
+          trace = "none",
+          density.info = "none",
+          col = bluered(100),
+          cellnote = round(cor_matrix, 2),  # números en cada celda
+          notecex = 0.8,
+          cexRow = 0.8,   # tamaño de texto filas
+          cexCol = 0.8,   # tamaño de texto columnas
+          Rowv = FALSE,
+          Colv = FALSE,
+          dendrogram = "none",
+          main = "Heatmap of Correlations \nAmong Numerical Variables"
+)
+```
+
+$\quad$ Because the three outcome groups represent fundamentally different clinical trajectories, the correlation between baseline CD4 and time-to-event measures must be evaluated separately within each subgroup. A single overall correlation is not interpretable, as it conflates distinct event mechanisms, censoring structures, and risk pathways. 
+
+1. **AIDS Diagnosed subgroup** (event = 1, death = 0).  
+For individuals who developed AIDS but did not die during follow-up, the relevant endpoint is the time to AIDS diagnosis. In this subgroup, `time_event` represents the actual observed progression time. It is clinically meaningful to assess whether lower baseline CD4 counts are associated with earlier progression to AIDS, which is highly plausible given the role of CD4 as a marker of immunological decline. Correlating baseline CD4 with time_event therefore directly examines whether impaired immune function predicts more rapid clinical deterioration.
+
+2. **Death subgroup** (death = 1).  
+Among participants who died, the appropriate endpoint is time to death (time_death). This variable reflects the true failure time for this subgroup and captures the progression toward mortality. Exploring the correlation between baseline CD4 and time_death is clinically justified because lower CD4 levels are known to increase vulnerability to AIDS-related and opportunistic complications that may lead to death. A negative association (lower CD4 → shorter survival) would be consistent with established clinical understanding.
+
+3. **NoDeath/NoDiagnosed subgroup** (event = 0, death = 0).  
+For individuals who neither died nor developed AIDS, both time_event and time_death are purely censored and therefore do not represent meaningful biological times. The only interpretable time measure in this subgroup is the overall length of follow-up (time). Examining its correlation with baseline CD4 allows us to determine whether immune status is associated with the duration of observation prior to censoring. While a strong association is not expected, this exploration confirms whether follow-up time varies systematically with baseline immune function.
+Overall, analyzing time–CD4 correlations within outcome-specific strata ensures that each correlation reflects a coherent clinical process associated with a real, observed event (AIDS diagnosis or death) or with meaningful follow-up duration for censored individuals. This stratified approach avoids mixing incompatible event types and preserves the interpretability of both the clinical and statistical relationships.
+
+Overall, analyzing time–CD4 correlations within outcome-specific strata ensures that each correlation reflects a coherent clinical process associated with a real, observed event (AIDS diagnosis or death) or with meaningful follow-up duration for censored individuals. This stratified approach avoids mixing incompatible event types and preserves the interpretability of both the clinical and statistical relationships.
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, out.width="90%"}
+data_new <- data %>% 
+  mutate(
+    outcome_diagnosed = case_when(
+      (death == 0 & event == 1)  ~ "AIDS/Diagnosed",
+      (death == 1)  ~ "Death",
+      (death == 0 & event == 0)  ~ "NoDeath/NoDiagnosed"
+    ))
+data_new$outcome_diagnosed = factor(data_new$outcome_diagnosed)
+
+table(data_new$outcome_diagnosed)
+
+corr_list <- data_new %>%
+  group_by(outcome_diagnosed) %>%
+  group_map(~ cor(.x[, numeric_vars], use = "pairwise.complete.obs"))
+
+# Asignar nombres
+names(corr_list) <- data_new %>% group_by(outcome_diagnosed) %>% group_keys() %>% pull()
+
+#corr_list
+heatmap.2(corr_list[[1]],
+          trace = "none",
+          density.info = "none",
+          col = bluered(100),
+          cellnote = round(corr_list[[1]], 2),  # números en cada celda
+          notecex = 0.8,
+          cexRow = 0.8,   # tamaño de texto filas
+          cexCol = 0.8,   # tamaño de texto columnas
+          Rowv = FALSE,
+          Colv = FALSE,
+          dendrogram = "none",
+          main = "Heatmap of Correlations \nAmong Numerical Variables \n(for AIDS Diagnosed group)"
+)
+
+cat("\n")
+
+heatmap.2(corr_list[[2]],
+          trace = "none",
+          density.info = "none",
+          col = bluered(100),
+          cellnote = round(corr_list[[2]], 2),  # números en cada celda
+          notecex = 0.8,
+          cexRow = 0.8,   # tamaño de texto filas
+          cexCol = 0.8,   # tamaño de texto columnas
+          Rowv = FALSE,
+          Colv = FALSE,
+          dendrogram = "none",
+          main = "Heatmap of Correlations \nAmong Numerical Variables \n(for the Death Group)"
+)
+
+cat("\n")
+
+heatmap.2(corr_list[[3]][-4,-4],
+          trace = "none",
+          density.info = "none",
+          col = bluered(100),
+          cellnote = round(corr_list[[3]][-4,-4], 2),  # números en cada celda
+          notecex = 0.8,
+          cexRow = 0.8,   # tamaño de texto filas
+          cexCol = 0.8,   # tamaño de texto columnas
+          Rowv = FALSE,
+          Colv = FALSE,
+          dendrogram = "none",
+          main = "Heatmap of Correlations \nAmong Numerical Variables \n(for no AIDS/No Death)"
+)
+
+cat("\n")
+
+heatmap.2(corr_list[[3]],
+          trace = "none",
+          density.info = "none",
+          col = bluered(100),
+          cellnote = round(corr_list[[3]], 2),  # números en cada celda
+          notecex = 0.8,
+          cexRow = 0.8,   # tamaño de texto filas
+          cexCol = 0.8,   # tamaño de texto columnas
+          Rowv = FALSE,
+          Colv = FALSE,
+          dendrogram = "none",
+          main = "Heatmap of Correlations \nAmong Numerical Variables \n(for no AIDS/No Death)"
+)
+```
+
+### Correlations based on Sex and outcome (AIDS/Death/NoAIDSNoDeath)
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, out.width="90%"}
+library(tidyr)
+library(glue)
+library(reshape2)
+library(patchwork)
+library(GGally)
+
+corr_bySex <- data_new %>%
+  group_by(outcome_diagnosed, sex) %>%
+  group_map(~ cor(.x[, numeric_vars], use = "pairwise.complete.obs"))
+names(corr_bySex) <- data_new %>%
+  group_by(outcome_diagnosed, sex) %>%
+  group_keys() %>%
+  unite("name", outcome_diagnosed, sex, sep = "_") %>%
+  pull(name)
+#corr_bySex
+
+
+make_heatmap <- function(mat, title) {
+  df <- melt(mat)
+  ggplot(df, aes(x = Var1, y = Var2, fill = value)) +
+    geom_tile(color = "white") +
+    scale_fill_distiller(palette = "RdBu", limits = c(-1,1)) +
+    geom_text(aes(label = sprintf("%.2f", value)), size = 3) +
+    theme_minimal(base_size = 12) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.title = element_blank()
+    ) +
+    ggtitle(title) +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+for(out in unique(data_new$outcome_diagnosed)){
+  print(out)
+  corr_bySex <- data_new %>%
+    filter(outcome_diagnosed == out) %>%
+    group_by(sex) %>%
+    group_map(~ cor(.x[, numeric_vars], use = "pairwise.complete.obs"))
+  
+  names(corr_bySex) <- data_new %>%
+    group_by(sex) %>%
+    group_keys() %>% pull()
+  
+  p_male   <- make_heatmap(corr_bySex[[1]], glue("{out} \n(Male)")) + theme(legend.position = "none")
+  p_female <- make_heatmap(corr_bySex[[2]], glue("{out} \n(Female)"))
+  print(p_male + p_female)
+  
+  cat("\n")
+  
+  print(data_new %>%
+    filter(outcome_diagnosed == out)  %>%
+  select(all_of(numeric_vars), sex) %>%
+  ggpairs(aes(color = sex),
+          upper = list(continuous = "points"),
+          lower = list(continuous = "points"),
+          diag  = list(continuous = "densityDiag")) +
+  scale_color_manual(values = c("male" = "black", "female" = "red")) +
+    ggtitle(glue("Matrix scatterplot for {out} group")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)))
+}
+
+table(data_new$sex, data_new$outcome_diagnosed) %>% 
+  knitr::kable(digits = 4)
+```
+
+### Correlations based on tx (1 = IDV included, 0 = otherwise) and outcome (AIDS/Death/NoAIDSNoDeath)
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, out.width="90%"}
+for(out in unique(data_new$outcome_diagnosed)){
+  print(out)
+  corr_bytx <- data_new %>%
+    filter(outcome_diagnosed == out) %>%
+    group_by(tx) %>%
+    group_map(~ cor(.x[, numeric_vars], use = "pairwise.complete.obs"))
+  
+  names(corr_bytx) <- data_new %>%
+    group_by(tx) %>%
+    group_keys() %>% pull()
+  
+  p_male   <- make_heatmap(corr_bytx[[1]], glue("{out} \n(No IVD included)")) + theme(legend.position = "none")
+  p_female <- make_heatmap(corr_bytx[[2]], glue("{out} \n(IVD included)"))
+  print(p_male + p_female)
+  
+  cat("\n")
+  
+  print(data_new %>%
+    filter(outcome_diagnosed == out)  %>%
+  select(all_of(numeric_vars), tx) %>%
+  ggpairs(aes(color = tx),
+          upper = list(continuous = "points"),
+          lower = list(continuous = "points"),
+          diag  = list(continuous = "densityDiag")) +
+  scale_color_manual(values = c("0" = "black", "1" = "red")) +
+    ggtitle(glue("Matrix scatterplot for {out} group")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)))
+}
+
+table(data_new$tx, data_new$outcome_diagnosed) %>% 
+  knitr::kable(digits = 4)
+```
+
+### Correlations based on ivdrug (1 = IDV included, 0 = otherwise) and outcome (AIDS/Death/NoAIDSNoDeath)
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, out.width="85%"}
+for(out in unique(data_new$outcome_diagnosed)){
+  print(out)
+  corr_byivdrug <- data_new %>%
+    filter(outcome_diagnosed == out) %>%
+    group_by(ivdrug) %>%
+    group_map(~ cor(.x[, numeric_vars], use = "pairwise.complete.obs"))
+  
+  names(corr_byivdrug) <- data_new %>%
+    filter(outcome_diagnosed == out) %>%
+    group_by(ivdrug) %>%
+    group_keys() %>% pull()
+  
+  p_male   <- make_heatmap(corr_byivdrug[[1]], glue("{out} \n(Never used IV drug previously)")) + theme(legend.position = "none")
+  if(out == "AIDS/Diagnosed"){corr_byivdrug[[3]] = corr_byivdrug[[2]];corr_byivdrug[[2]] <- NA}
+  p_female <- make_heatmap(corr_byivdrug[[3]], glue("{out} \n(Previously used IV drug)"))
+  print(p_male + p_female)
+  
+  cat("\n")
+  
+  print(data_new %>%
+    filter(outcome_diagnosed == out)  %>%
+  select(all_of(numeric_vars), ivdrug) %>%
+  ggpairs(aes(color = ivdrug),
+          upper = list(continuous = "points"),
+          lower = list(continuous = "points"),
+          diag  = list(continuous = "densityDiag")) +
+  scale_color_manual(values = c("never" = "black", "previously" = "red")) +
+    ggtitle(glue("Matrix scatterplot for {out} group")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)))
+}
+
+table(data_new$ivdrug, data_new$outcome_diagnosed) %>% 
+  knitr::kable(digits = 4)
+```
+
+### Correlations based on cd4_lvl (0 <= 50, 1 >50) and outcome (AIDS/Death/NoAIDSNoDeath)
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, out.width="90%"}
+for(out in unique(data_new$outcome_diagnosed)){
+  print(out)
+  corr_bytx <- data_new %>%
+    filter(outcome_diagnosed == out) %>%
+    group_by(cd4_lvl) %>%
+    group_map(~ cor(.x[, numeric_vars], use = "pairwise.complete.obs"))
+  
+  names(corr_bytx) <- data_new %>%
+    group_by(cd4_lvl) %>%
+    group_keys() %>% pull()
+  
+  p_male   <- make_heatmap(corr_bytx[[1]], glue("{out} \n(<=50)")) + theme(legend.position = "none")
+  p_female <- make_heatmap(corr_bytx[[2]], glue("{out} \n(>50)"))
+  print(p_male + p_female)
+  
+  cat("\n")
+  
+  print(data_new %>%
+    filter(outcome_diagnosed == out)  %>%
+  select(all_of(numeric_vars), cd4_lvl) %>%
+  ggpairs(aes(color = cd4_lvl),
+          upper = list(continuous = "points"),
+          lower = list(continuous = "points"),
+          diag  = list(continuous = "densityDiag")) +
+  scale_color_manual(values = c("<=50" = "black", ">50" = "red")) +
+    ggtitle(glue("Matrix scatterplot for {out} group")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)))
+}
+
+table(data_new$cd4_lvl, data_new$outcome_diagnosed) %>% 
+  knitr::kable(digits = 4)
+```
+
+## Understanding baseline_cd4 through other variables 
+
+```{r, message=FALSE, echo=FALSE}
+data_new <- data %>% 
+  mutate(
+    outcome_diagnosed = case_when(
+      (death == 0 & event == 1)  ~ "AIDS/Diagnosed",
+      (death == 1)  ~ "Death",
+      (death == 0 & event == 0)  ~ "NoDeath/NoDiagnosed"
+    ))
+data_new$outcome_diagnosed = factor(data_new$outcome_diagnosed)
+
+data_new %>% 
+  group_by(outcome_diagnosed) %>% 
+  summarise(
+    n = n(),
+    mean_cd4   = mean(base_cd4, na.rm = TRUE),
+    median_cd4 = median(base_cd4, na.rm = TRUE),
+    sd_cd4     = sd(base_cd4, na.rm = TRUE)
+  ) %>% knitr::kable(digits = 4)
+```
+
+$\quad$ The violin plots illustrate a clear separation of baseline CD4 counts across clinical outcome groups: participants who developed AIDS or died had substantially lower CD4 levels at enrollment, whereas event-free participants exhibited higher and broader CD4 distributions. This visual pattern is confirmed numerically. Median baseline CD4 was 20 cells/mm³ in the AIDS/Diagnosed group and 16.5 cells/mm³ among those who died, compared with 81 cells/mm³ in the NoDeath/NoDiagnosed group. The interquartile ranges similarly reflect this gradient of immunological severity. Together, these results provide strong internal validation: baseline CD4 at enrollment effectively discriminates clinical trajectories, with lower immune reserves associated with subsequent AIDS-defining events or death.
+
+```{r, message=FALSE, echo=FALSE}
+ggplot(data_new, aes(x = outcome_diagnosed, y = base_cd4, fill = outcome_diagnosed)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +
+  geom_boxplot(width = 0.15, outlier.color = "black", outlier.size = 2) +
+  labs(x = "Clinical Group", y = "Baseline CD4") +
+  ggtitle("Distribution of Baseline CD4 Counts Across Clinical Groups") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r, message=FALSE, echo=FALSE}
+ggplot(data_new, aes(x = base_cd4, fill = outcome_diagnosed)) +
+  geom_density(alpha = 0.4) +
+  labs(x = "Baseline CD4", fill = "Outcome") +
+  theme_minimal()
+```
+
+$\quad$ Baseline CD4 counts showed a clear gradient across Karnofsky performance scores. Participants with poorer functional status (Karnofsky 70 and 80) exhibited markedly lower CD4 levels at enrollment, with median values of 22 and 39 cells/mm³, respectively. In contrast, individuals with higher performance scores (90 and 100) had substantially higher CD4 medians (79 and 88 cells/mm³). The widening distribution of CD4 at higher Karnofsky levels indicates greater immunological heterogeneity among clinically well participants. These findings are clinically consistent: better functional capacity reflects higher immune reserve, whereas severe immunosuppression is associated with diminished physical functioning.
+
+## Considering those who had a base_cd4 higher than 200
+
+$\quad$ Baseline immune status was severely compromised in this cohort: 88% of participants had CD4 less or equal than  200 at enrollment, and 40% had CD4 less or equal than 50. Such distributions are fully consistent with an advanced HIV-infected population and align with the high rates of AIDS-defining events and deaths observed during follow-up.
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+data_new <- data_new %>% 
+  mutate(
+    cd4_strata = cut(
+      base_cd4,
+      breaks = c(-Inf, 50, 200, Inf),
+      labels = c("<=50", "51–200", ">200")
+    )
+  )
+
+table(data_new$cd4_strata, useNA = "ifany")
+
+tab_cd4_outcome <- table(data_new$cd4_strata, data_new$outcome)
+tab_cd4_outcome %>% 
+  knitr::kable(digits = 4)
+```
+
+
+$\quad$ Stratifying participants by baseline CD4 count reveals a clear immunological gradient in clinical outcomes. Among individuals with CD4 $\leq$ 50 cells/mm³, 15% experienced AIDS-defining events or death (51 diagnosed, 17 deaths), reflecting severe immunosuppression and high vulnerability. Participants with CD4 between 51–200 cells/mm³ showed substantially lower event rates, while those with CD4 >200 exhibited almost no progression: none developed AIDS and only one death was recorded. These distributions confirm the expected biological pattern: lower immune reserves at enrollment are strongly associated with increased clinical deterioration during follow-up.
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+data_new$outcome_clean <- factor(data_new$outcome_diagnosed,
+  levels = c("AIDS/Diagnosed", "Death", "NoDeath/NoDiagnosed"),
+  labels = c("AIDS Diagnosed", "Death", "No Event")
+)
+
+plot_df <- data_new %>% 
+  count(cd4_strata, outcome_clean) %>% 
+  group_by(cd4_strata) %>% 
+  mutate(prop = n / sum(n))
+
+ggplot(plot_df, aes(x = cd4_strata, y = prop, fill = outcome_clean)) +
+  geom_col(position = "fill") +
+  geom_text(
+    aes(label = scales::percent(prop, accuracy = 0.1)),
+    position = position_fill(vjust = 0.5),
+    size = 5
+  ) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Proportion of Outcomes by Baseline CD4 Strata",
+    x = "Baseline CD4 Strata",
+    y = "Proportion",
+    fill = "Clinical Outcome"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Considering the Karnofsky score
+
+$\quad$ Baseline CD4 counts showed a clear gradient across Karnofsky performance scores. Participants with poorer functional status (Karnofsky 70 and 80) exhibited markedly lower CD4 levels at enrollment, with median values of 22 and 39 cells/mm³, respectively. In contrast, individuals with higher performance scores (90 and 100) had substantially higher CD4 medians (79 and 88 cells/mm³). The widening distribution of CD4 at higher Karnofsky levels indicates greater immunological heterogeneity among clinically well participants. These findings are clinically consistent: better functional capacity reflects higher immune reserve, whereas severe immunosuppression is associated with diminished physical functioning.
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+data_new %>% 
+  group_by(karnof) %>% 
+  summarise(
+    n          = n(),
+    mean_cd4   = mean(base_cd4, na.rm = TRUE),
+    median_cd4 = median(base_cd4, na.rm = TRUE)
+  ) %>% 
+  knitr::kable(digits = 4)
+
+ggplot(data_new, aes(x = factor(karnof), y = base_cd4)) +
+  geom_boxplot() +
+  labs(
+    x = "Karnofsky score at enrollment",
+    y = "Baseline CD4"
+  ) +
+  theme_minimal()
+```
+
+$\quad$ Across all analyses, Karnofsky performance status demonstrates a strong, consistent relationship with disease severity and clinical outcomes. Lower scores (70–80) cluster with low CD4 counts, higher rates of AIDS diagnosis, and significantly worse survival, whereas higher scores (90–100) align with preserved CD4 counts, minimal clinical events, and excellent survival trajectories. These findings highlight the Karnofsky index as a robust baseline prognostic marker in HIV-infected individuals.
+
+$\quad$ Higher Karnofsky performance scores were strongly associated with favorable clinical outcomes. Participants with scores of 90–100 exhibited very low rates of AIDS diagnosis and death, whereas those with scores of 70–80 had substantially higher event rates. This supports the clinical role of performance status as a global indicator of disease severity and short-term prognosis.
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+tab_karnof_outcome <- table(data_new$karnof, data_new$outcome_diagnosed)
+#tab_karnof_outcome
+prop.table(tab_karnof_outcome, 1) %>% 
+  knitr::kable(digits = 2, caption = "Proportions by Karnofsky score of functional status")
+
+tab_karnof_outcome <- table(data_new$karnof, data_new$outcome_diagnosed)
+#tab_karnof_outcome
+#prop.table(tab_karnof_outcome, 1)
+library(ggplot2)
+df_karnof_outcome <- as.data.frame(tab_karnof_outcome)
+colnames(df_karnof_outcome) <- c("Karnofsky", "Outcome", "Count")
+
+ggplot(df_karnof_outcome, aes(Karnofsky, Outcome, fill = Count)) +
+  geom_tile() +
+  geom_text(aes(label = Count), color = "white", size = 10) +
+  scale_fill_gradient(low = "steelblue", high = "darkred", guide = "none") +
+  labs(
+       y = "Clinical Outcome",
+       x = "Karnofsky Score") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 15),
+    axis.text.x = element_text(size = 18, hjust = 1),
+    axis.text.y = element_text(size = 18),
+    axis.title.x = element_text(size = 20, margin = margin(t = 6)),
+    axis.title.y = element_text(size = 20, margin = margin(r = 6))
+  )
+```
+
+$\quad$ Survival differed substantially across Karnofsky performance categories. Participants with the lowest performance score (70) experienced markedly higher mortality within the first year, whereas those with scores of 90–100 had excellent survival with minimal drop-off. These patterns reinforce the Karnofsky score as a sensitive predictor of short-term mortality risk in HIV patients at baseline.
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+library(survival)
+library(survminer)
+
+SurvObj <- Surv(time = data_new$time_event, event = data_new$event)
+
+fit_km_karnof <- survfit(SurvObj ~ karnof, data = data_new)
+
+ggsurvplot(
+  fit_km_karnof,
+  data = data_new,
+  risk.table = TRUE,
+  pval = TRUE,
+  conf.int = F,
+  palette = c("#d7191c","#fdae61","#abd9e9","#2c7bb6"),
+  title = "Kaplan–Meier Survival Curves by Karnofsky Performance Status",
+  xlab = "Days",
+  ylab = "Survival Probability"
+)
+```
+
+
+## Follow-Up Pattern and Censoring Mechanism
+$\quad$ An examination of the event-time distributions, censoring-time distributions, and combined follow-up times indicates that the study is characterized by substantial censoring near the end of the follow-up window (approximately 250–360 days). The censoring densities are highly similar across all categorical covariates, suggesting **no differential censoring** by subgroup. The shape and timing of the censoring distribution—together with the fact that censoring predominantly occurs at a common study termination time—provide strong evidence that censoring is non-informative with respect to the event process. Moreover, the event-time densities peak earlier than the censoring densities, which is consistent with adequate follow-up rather than early loss to follow-up. Although some small subgroups (e.g., current IV drug users or minor race categories) exhibit irregular density shapes due to limited sample sizes, these patterns do not affect the overall conclusion. Taken together, the follow-up characteristics appear compatible with the **independent (non-informative) censoring assumption**, which is explicitly required for the Kaplan–Meier estimator, Nelson–Aalen estimator, Cox proportional hazards model, and log-rank tests, as discussed in the course lectures.
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+event_times <- data %>% filter(event == 1)
+
+ggplot(data, aes(x = time_event)) +
+  geom_density(fill = "lightblue", alpha = 0.3) +
+  labs(title = "Density of Observed Event Times Only") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+library(patchwork)
+p1 <- ggplot(event_times, aes(x = time_event, color = sex)) +
+  geom_density(size = 1.1) +
+  labs(title = "Event Time Density\n by Sex") +
+  scale_color_manual(values = c("blue", "red")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(event_times, aes(x = time_event, fill = sex)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15, 
+                 alpha = 0.4, 
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Event Times\n by Sex",
+       x = "Event time (days)",
+       y = "Density") +
+  scale_fill_manual(values = c("blue", "red")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+p1 <- ggplot(event_times, aes(x = time_event, color = cd4_lvl)) +
+  geom_density(size = 1.1) +
+  labs(title = "Event Time Density\n by CD4 Stratum") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(event_times, aes(x = time_event, fill = cd4_lvl)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, 
+                 alpha = 0.4, 
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Event Times\n by CD4 Stratum",
+       x = "Event time (days)",
+       y = "Density") +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+p1 <- ggplot(event_times, aes(x = time_event, color = ivdrug)) +
+  geom_density(size = 1.1) +
+  labs(title = "Event Time Density\n by IV Drug Use") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(event_times, aes(x = time_event, fill = ivdrug)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15,
+                 alpha = 0.4,
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Event Times\n by IV Drug Use",
+       x = "Event time (days)",
+       y = "Density") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+p1 <- ggplot(event_times, aes(x = time_event, color = race)) +
+  geom_density(size = 1.1) +
+  labs(title = "Event Time Density\n by Race") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(event_times, aes(x = time_event, fill = race)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15,
+                 alpha = 0.35,
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Event Times\n by Race",
+       x = "Event time (days)",
+       y = "Density") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+p1 <- ggplot(data, aes(x = time_event, color = txgrp)) +
+  geom_density(size = 1.1) +
+  labs(title = "Event Time Density\n by Treatment Group") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(data, aes(x = time_event, fill = txgrp)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15,
+                 alpha = 0.4,
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Event Times\n by Treatment Group",
+       x = "Event time (days)",
+       y = "Density") +
+       theme_bw() +
+       theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+event_times <- data %>% filter(event == 0)
+
+ggplot(data, aes(x = time_event)) +
+  geom_density(fill = "lightblue", alpha = 0.3) +
+  labs(title = "Density of Censored Times Only") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(data, aes(x = time_event)) +
+  geom_histogram(fill = "purple",
+                 aes(y = after_stat(density)),
+                 bins = 15, 
+                 alpha = 0.4, 
+                 position = "identity") +
+  labs(title = "Density of Censored Times Only", 
+       x = "Event time (days)",
+       y = "Density") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+library(patchwork)
+p1 <- ggplot(event_times, aes(x = time_event, color = sex)) +
+  geom_density(size = 1.1) +
+  labs(title = "Censored Time Density\n by Sex") +
+  scale_color_manual(values = c("blue", "red")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(event_times, aes(x = time_event, fill = sex)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15, 
+                 alpha = 0.4, 
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Censored Times\n by Sex",
+       x = "Event time (days)",
+       y = "Density") +
+  scale_fill_manual(values = c("blue", "red")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+p1 <- ggplot(event_times, aes(x = time_event, color = cd4_lvl)) +
+  geom_density(size = 1.1) +
+  labs(title = "Censored Time Density\n by CD4 Stratum") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(event_times, aes(x = time_event, fill = cd4_lvl)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, 
+                 alpha = 0.4, 
+                 position = "identity") +
+  labs(title = "Histogram of Censored Times\n by CD4 Stratum",
+       x = "Event time (days)",
+       y = "Density") +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+event_times <- data_new %>% filter(event == 0)
+
+p1 <- ggplot(event_times, aes(x = time_event, color = cd4_strata)) +
+  geom_density(size = 1.1) +
+  labs(title = "Censored Time Density\n by CD4 Stratum") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(event_times, aes(x = time_event, fill = cd4_lvl)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, 
+                 alpha = 0.4, 
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Censored Times\n by CD4 Stratum",
+       x = "Event time (days)",
+       y = "Density") +
+  scale_fill_manual(values = c("red", "blue")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+p1 <- ggplot(event_times, aes(x = time_event, color = ivdrug)) +
+  geom_density(size = 1.1) +
+  labs(title = "Censored Time Density\n by IV Drug Use") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(event_times, aes(x = time_event, fill = ivdrug)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15,
+                 alpha = 0.4,
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Censored Times\n by IV Drug Use",
+       x = "Event time (days)",
+       y = "Density") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+p1 <- ggplot(event_times, aes(x = time_event, color = race)) +
+  geom_density(size = 1.1) +
+  labs(title = "Censored Time Density\n by Race") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(event_times, aes(x = time_event, fill = race)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15,
+                 alpha = 0.35,
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Censored Times\n by Race",
+       x = "Event time (days)",
+       y = "Density") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r, message=FALSE, echo=FALSE, out.width="90%", warning=FALSE}
+p1 <- ggplot(data, aes(x = time_event, color = txgrp)) +
+  geom_density(size = 1.1) +
+  labs(title = "Censored Time Density\n by Treatment Group") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+p2 <- ggplot(data, aes(x = time_event, fill = txgrp)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15,
+                 alpha = 0.4,
+                 position = "identity") +
+  labs(title = "Normalized Histogram of Censored Times\n by Treatment Group",
+       x = "Event time (days)",
+       y = "Density") +
+       theme_bw() +
+       theme(plot.title = element_text(hjust = 0.5))
+
+p1 + p2
+```
+
+```{r}
+library(survival)
+library(survminer)
+
+fit <- survfit(Surv(time_event, event) ~ cd4_strata, data = data_new)
+
+ggsurv <- ggsurvplot(
+  fit,
+  conf.int = TRUE,
+  censor = FALSE,                     # Quita las cruces de censura
+  risk.table = FALSE,
+  palette = c("#E64B35", "#4DBBD5", "#00A087"),
+  legend.title = "CD4 Stratum",
+  legend.labs = c("<=50", "51–200", ">200"),
+  ggtheme = theme_bw(base_size = 14),
+  xlab = "Days of follow-up",
+  ylab = "Survival probability"
+)
+
+# Ajustar eje Y y mejorar el tema
+ggsurv$plot <- ggsurv$plot +
+  coord_cartesian(ylim = c(0.775, 1)) +     # Recorte para ver mejor diferencias
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    legend.position = "top",
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11)
+  )
+
+ggsurv
+```
+
+```{r}
+library(survival)
+library(survminer)
+
+# Modelo Kaplan-Meier para CD4 dicotómico
+fit2 <- survfit(Surv(time_event, event) ~ cd4_lvl, data = data_new)
+
+ggsurv2 <- ggsurvplot(
+  fit2,
+  conf.int = TRUE,
+  censor = FALSE,                     # Sin marcas de censura
+  risk.table = FALSE,
+  palette = c("#E64B35", "#4DBBD5"),  # Solo 2 colores
+  legend.title = "CD4 Level",
+  legend.labs = c("<=50", ">50"),      # Etiquetas del estrato dicotómico
+  ggtheme = theme_bw(base_size = 14),
+  xlab = "Days of follow-up",
+  ylab = "Survival probability"
+)
+
+# Mejoras estéticas y rango del eje Y
+ggsurv2$plot <- ggsurv2$plot +
+  coord_cartesian(ylim = c(0.775, 1)) +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    legend.position = "top",
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 11)
+  )
+
+ggsurv2
+```
+

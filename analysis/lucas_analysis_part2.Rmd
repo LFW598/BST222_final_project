@@ -23,7 +23,7 @@ survfit_na_actg <- survfit(surv_actg ~ tx, data = actg_c, type = 'fleming-harrin
 survfit_actg |> 
   plot(main = "Disease Free Survival for Soc and Invidir",
        col = 1:2, lwd = 2,
-       conf.int = TRUE,
+       conf.int = FALSE,
        xlab = 'Days',
        ylab = 'Survival Prob.',
        ylim = c(0.7, 1))
@@ -203,13 +203,24 @@ plot((actg_c$age * as.numeric(actg_c$karnof)), mres_mid,
 lines(lowess((actg_c$age * as.numeric(actg_c$karnof)), mres_mid))
 ```
 
+Assume karnofsky to have linear relationship and turn it numeric as otherwise we wind up creating a bunuch more variables and mess with the power.
+
 That was a miss, its likely that the intuition is fine, but actually age and karnofsky score are highly correlated. Since this was a short study it's likely that overall health is more important that age. In the long run, age may cause complications with having a combined event of death and AIDS, but not here. Lets check covariance.
 
 ```{r cov of karnof and age and result}
-boxplot(age ~ karnof, data = actg_c,
-        main = 'Boxplots of Age by Karnofsky Score',
-        xlab = 'Karnofsky Score',
-        ylab = 'Age')
+ggplot(actg_c, aes(x = as.factor(karnof), y = age, fill = as.factor(karnof))) +
+  geom_violin(trim = FALSE, alpha = 0.6) +
+  geom_boxplot(width = 0.15, outlier.color = "black", outlier.size = 2) +
+  labs(
+    x = "Karnofsky Score",
+    y = "Age",
+    title = "Distribution of Age by Karnofsky Score"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5)
+  )
 ```
 
 Those with the lower score are slightly older, but not by much to assume that there is great co-linearity between them, we should be fine keeping both variables.
@@ -219,9 +230,9 @@ Next, priorzdv may be a proxy for how long someone has had HIV, which could be a
 ```{r}
 plot(actg_c$priorzdv, actg_c$base_cd4,
      xlim = c(0, 200),
-     xlab = 'Prior ZDV',
-     ylab = 'Base cd4',
-     main = 'Plot of Base cd4 against Prior ZDV')
+     xlab = 'Prior ZDV Usage (Months)',
+     ylab = 'Base CD4 (mm^3)',
+     main = 'Base CD4 by Prior ZDV Usage')
 ```
 
 Again, there is no real pattern here between someone's baseline cd4 level and their prior months of ZDV usage, so there is no reason to believe they are having a strong effect on each other.
@@ -240,6 +251,15 @@ lines(lowess((actg_c$priorzdv * actg_c$base_cd4), mres_mid))
 ```
 
 Again, no dice, an interaction term helps us not here.
+
+```{r ZDV with Failure Times}
+actg_c_eventonly <- actg_c[actg_c$event == 1, ]
+
+plot(actg_c_eventonly$priorzdv, actg_c_eventonly$time_event,
+     main = 'Event Time by Prior ZDV Usage',
+     xlab = 'Prior ZDV Usage (Months)',
+     ylab = 'Event Time (Days)')
+```
 
 ```{r checking survival of mid model against tx model}
 mid_df <- data.frame(tx = c(0, 1),

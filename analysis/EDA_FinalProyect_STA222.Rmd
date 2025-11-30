@@ -10,7 +10,7 @@ output: pdf_document
 The `actg` dataset can be found in the `GLDreg` package and comes from Hosmer et al. (2008). This data frame has 1151 rows and 16 columns. 
 
 ```{r}
-data <- readRDS("actg_clean.rds")
+data <- readRDS("../data/actg_clean.rds")
 
 dim(data)
 #str(data)

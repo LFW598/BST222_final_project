@@ -299,3 +299,13 @@ Look at stratification because of the base_cd4
 Look for outliars with dfbeta and deviance residuals.
 
 Look at removing priorzdv, I thought it would be clinically important but it seems like it may be really hurting the model.
+
+```{r best model}
+final_model <- coxph(surv_actg ~ tx + ivdrug + karnof + age + base_cd4, data = actg_c)
+
+plot(survfit_na_actg,
+     col = 1:2, lwd = 2,
+     fun = 'cloglog',
+     main = 'clog-log Survival Curves')
+legend('topleft', c('SoC', 'SoC + IDV'), col = 1:2, lwd = 2)
+```

@@ -227,21 +227,18 @@ Those with the lower score are slightly older, but not by much to assume that th
 
 Next, priorzdv may be a proxy for how long someone has had HIV, which could be an important measure in AIDS progression, but different to base_cd4. Lets see if they have high co-linearity.
 
-```{r}
-plot(actg_c$priorzdv, actg_c$base_cd4,
-     xlim = c(0, 200),
-     xlab = 'Prior ZDV Usage (Months)',
-     ylab = 'Base CD4 (mm^3)',
-     main = 'Base CD4 by Prior ZDV Usage')
-```
-
 Again, there is no real pattern here between someone's baseline cd4 level and their prior months of ZDV usage, so there is no reason to believe they are having a strong effect on each other.
 
 We can try now to see if an interaction term here is helpful, its reasonable that the effect of someones prior zdv usage on their survival depends on their baseline cd4 as someone with a higher cd4 should have a better time with the disease, but longer zdv implies longer time with HIV, which has detrimental effects on health outside of just cd4.
 
 ```{r}
-summary(mid_cox_actg)
 summary(coxph(surv_actg ~ tx + ivdrug_bin + (priorzdv * base_cd4) + age + karnof, data = actg_c))
+
+plot(actg_c$priorzdv, actg_c$base_cd4,
+     xlim = c(0, 200),
+     xlab = 'Prior ZDV Usage (Months)',
+     ylab = 'Base CD4 (mm^3)',
+     main = 'Base CD4 by Prior ZDV Usage')
 
 plot((actg_c$priorzdv * actg_c$base_cd4), mres_mid,
      xlab = 'ZDV * Base cd4',
@@ -301,7 +298,7 @@ Look for outliars with dfbeta and deviance residuals.
 Look at removing priorzdv, I thought it would be clinically important but it seems like it may be really hurting the model.
 
 ```{r best model}
-final_model <- coxph(surv_actg ~ tx + ivdrug + karnof + age + base_cd4, data = actg_c)
+final_model <- coxph(surv_actg ~ tx + ivdrug_bin + karnof + age + base_cd4, data = actg_c)
 
 plot(survfit_na_actg,
      col = 1:2, lwd = 2,

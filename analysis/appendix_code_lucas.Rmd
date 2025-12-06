@@ -1,0 +1,146 @@
+---
+title: "appendix_code_lucas"
+output: html_document
+---
+
+####### CLEANING
+
+```{r loading packages}
+suppressWarnings(suppressPackageStartupMessages(library(tidyverse)))
+suppressWarnings(suppressPackageStartupMessages(library(GLDreg)))
+```
+
+```{r copy of dataset}
+edit_actg <- actg
+```
+
+```{r cleaning datatset}
+edit_actg <- 
+  edit_actg |> 
+  mutate(
+    txgrp = factor(txgrp, levels = 1:4, labels = c('zdv', 'idv_zdv', 'd4t', 'idv_d4t')), #3TC is included in all trt groups, so redundant in labels
+    cd4_lvl = factor(strat2, levels = 0:1, labels = c('<=50', '>50')),
+    sex = factor(sex, levels = 0:1, labels = c('male', 'female')),
+    race = factor(raceth, levels = 1:6, labels = c('wnh', 'bnh', 'h', 'api', 'ai', 'other')),
+    ivdrug = factor(ivdrug, levels = 1:3, labels = c('never', 'currently', 'previously')),
+    event = censor,
+    time_event = time,
+    death = censor_d,
+    time_death = time_d,
+    base_cd4 = cd4,
+    ivdrug_bin = ifelse(actg$ivdrug == 1, 0, 1)
+  ) |> 
+  select(-c(raceth, strat2, time, time_d, censor, censor_d, cd4))
+
+actg_c <- edit_actg
+```
+
+###### ANALYSIS
+
+```{r KM Curves and Test}
+surv_actg <- Surv(actg_c$time_event, actg_c$event)
+
+survfit_actg <- survfit(surv_actg ~ tx, data = actg_c)
+survfit_na_actg <- survfit(surv_actg ~ tx, data = actg_c, type = 'fleming-harrington')
+
+survfit_actg |> 
+  plot(main = "Disease Free Survival for Soc and Invidir",
+       col = 1:2, lwd = 2,
+       conf.int = FALSE,
+       xlab = 'Days',
+       ylab = 'Survival Prob.',
+       ylim = c(0.7, 1))
+legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
+
+survfit_actg |> 
+  plot(main = 'KM vs. AE Curve',
+       col = 1:2, lwd = 2,
+       xlab = 'Days',
+       ylab = 'Survival Prob',
+       ylim = c(0.7, 1))
+lines(survfit_na_actg, col = 3:4)
+legend('bottomleft', c('KM Soc', 'KM SoC + Invidir', 'AE SoC', 'AE SoC + Invidir'), col = c(1:4), lwd = 1)
+
+survdiff(surv_actg ~ tx, data = actg_c)
+```
+
+```{r add1 and mid_model}
+add1(small_cox_actg, scope = ~ tx + sex + hemophil + ivdrug + karnof + priorzdv + age + race + base_cd4, test = "Chisq")
+
+mid_cox_actg <- coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + age + base_cd4, data = actg_c)
+summary(mid_cox_actg)
+```
+
+```{r martingale residuals for transformations}
+mres_priorzdv <- residuals(coxph(surv_actg ~ tx + ivdrug_bin + karnof + age + base_cd4, data = actg_c))
+mres_age <- residuals(coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + base_cd4, data = actg_c))
+mres_basecd4 <- residuals(coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + age, data = actg_c))
+
+plot(actg_c$priorzdv, mres_priorzdv,
+     xlab = 'Months of Prior ZDV',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. ZDV Usage')
+lines(lowess(actg_c$priorzdv, mres_priorzdv))
+
+plot(actg_c$age, mres_age,
+     xlab = 'Age',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. Age')
+lines(lowess(actg_c$age, mres_age))
+
+plot(actg_c$base_cd4, mres_basecd4,
+     xlab = 'Base cd4',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. Base cd4')
+lines(lowess(actg_c$base_cd4, mres_basecd4))
+```
+
+```{r karnofsky score and age}
+summary(coxph(surv_actg ~ tx + ivdrug_bin + priorzdv + base_cd4 + (age * karnof), data = actg_c))
+
+mres_mid <- residuals(mid_cox_actg, type = 'martingale')
+
+plot((actg_c$age * as.numeric(actg_c$karnof)), mres_mid,
+     xlab = 'Age * Karnofsky Score',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. Age * Karnofsky Score')
+lines(lowess((actg_c$age * as.numeric(actg_c$karnof)), mres_mid))
+```
+
+```{r cd4 and zdv interaction}
+summary(coxph(surv_actg ~ tx + ivdrug_bin + (priorzdv * base_cd4) + age + karnof, data = actg_c))
+
+plot(actg_c$priorzdv, actg_c$base_cd4,
+     xlim = c(0, 200),
+     xlab = 'Prior ZDV Usage (Months)',
+     ylab = 'Base CD4 (mm^3)',
+     main = 'Base CD4 by Prior ZDV Usage')
+
+plot((actg_c$priorzdv * actg_c$base_cd4), mres_mid,
+     xlab = 'ZDV * Base cd4',
+     ylab = 'Martingale Residuals',
+     main = 'Martingale Residuals vs. ZDV Usage * Base cd4')
+lines(lowess((actg_c$priorzdv * actg_c$base_cd4), mres_mid))
+
+actg_c_eventonly <- actg_c[actg_c$event == 1, ]
+plot(actg_c_eventonly$priorzdv, actg_c_eventonly$time_event,
+     main = 'Event Time by Prior ZDV Usage',
+     xlab = 'Prior ZDV Usage (Months)',
+     ylab = 'Event Time (Days)')
+```
+
+```{r karnof and age interaction}
+ggplot(actg_c, aes(x = as.factor(karnof), y = age, fill = as.factor(karnof))) +
+  geom_violin(trim = FALSE, alpha = 0.6) +
+  geom_boxplot(width = 0.15, outlier.color = "black", outlier.size = 2) +
+  labs(
+    x = "Karnofsky Score",
+    y = "Age",
+    title = "Distribution of Age by Karnofsky Score"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5)
+  )
+```

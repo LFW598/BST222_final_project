@@ -38,6 +38,8 @@ actg_c <- edit_actg
 ###### ANALYSIS
 
 ```{r KM Curves and Test}
+table(actg_c$tx, actg_c$event)
+
 surv_actg <- Surv(actg_c$time_event, actg_c$event)
 
 survfit_actg <- survfit(surv_actg ~ tx, data = actg_c)

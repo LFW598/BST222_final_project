@@ -8,6 +8,7 @@ output: html_document
 ```{r loading packages}
 suppressWarnings(suppressPackageStartupMessages(library(tidyverse)))
 suppressWarnings(suppressPackageStartupMessages(library(GLDreg)))
+suppressWarnings(suppressPackageStartupMessages(library(survival)))
 ```
 
 ```{r copy of dataset}
@@ -55,13 +56,13 @@ survfit_actg |>
 legend('bottomleft', c('SoC', 'SoC + Invidir'), col = 1:2, lwd = 2)
 
 survfit_actg |> 
-  plot(main = 'KM vs. AE Curve',
+  plot(main = 'KM vs. NA Curve',
        col = 1:2, lwd = 2,
        xlab = 'Days',
        ylab = 'Survival Prob',
        ylim = c(0.7, 1))
 lines(survfit_na_actg, col = 3:4)
-legend('bottomleft', c('KM Soc', 'KM SoC + Invidir', 'AE SoC', 'AE SoC + Invidir'), col = c(1:4), lwd = 1)
+legend('bottomleft', c('KM Soc', 'KM SoC + Invidir', 'NA SoC', 'NA SoC + Invidir'), col = c(1:4), lwd = 1)
 
 survdiff(surv_actg ~ tx, data = actg_c)
 ```

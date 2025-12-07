@@ -65,10 +65,12 @@ survdiff(surv_actg ~ tx, data = actg_c)
 ```
 
 ```{r add1 and mid_model}
-add1(small_cox_actg, scope = ~ tx + sex + hemophil + ivdrug + karnof + priorzdv + age + race + base_cd4, test = "Chisq")
+add1(small_cox_actg, scope = ~ tx + sex + hemophil + ivdrug_bin + karnof + priorzdv + age + race + base_cd4, test = "Chisq")
 
 mid_cox_actg <- coxph(surv_actg ~ tx + ivdrug_bin + karnof + priorzdv + age + base_cd4, data = actg_c)
 summary(mid_cox_actg)
+
+cox.zph(mid_cox_actg)
 ```
 
 ```{r martingale residuals for transformations}

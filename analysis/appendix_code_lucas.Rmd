@@ -134,7 +134,7 @@ plot(actg_c_eventonly$priorzdv, actg_c_eventonly$time_event,
      ylab = 'Event Time (Days)')
 ```
 
-```{r karnof and age interactionn}
+```{r karnof and age interaction}
 ggplot(actg_c, aes(x = as.factor(karnof), y = age, fill = as.factor(karnof))) +
   geom_violin(trim = FALSE, alpha = 0.6) +
   geom_boxplot(width = 0.15, outlier.color = "black", outlier.size = 2) +
